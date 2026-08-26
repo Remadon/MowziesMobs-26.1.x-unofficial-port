@@ -5,37 +5,47 @@ import com.bobmowzie.mowziesmobs.client.model.tools.geckolib.MowzieGeoBone;
 import com.bobmowzie.mowziesmobs.client.model.tools.geckolib.MowzieGeoModel;
 import com.bobmowzie.mowziesmobs.server.entity.umvuthana.EntityUmvuthana;
 import com.bobmowzie.mowziesmobs.server.entity.umvuthana.MaskType;
-import net.minecraft.resources.ResourceLocation;
+import net.minecraft.resources.Identifier;
 import net.minecraft.util.Mth;
-import software.bernie.geckolib.animation.AnimationState;
-import software.bernie.geckolib.constant.DataTickets;
-import software.bernie.geckolib.model.data.EntityModelData;
+import com.geckolib.animation.state.AnimationTest;
+import com.geckolib.constant.DataTickets;
+import com.geckolib.constant.dataticket.DataTicket;
+import com.geckolib.renderer.base.GeoRenderState;
 
 public class ModelUmvuthana extends MowzieGeoModel<EntityUmvuthana> {
+    // PORTING NOTE: getTextureResource(GeoRenderState) no longer receives the live animatable (see below), so the
+    // mask type needed to pick a texture is captured into the render state up front via addAdditionalStateData
+    // (the intended GeckoLib 5 mechanism for this) using this custom DataTicket, and read back in getTextureResource.
+    private static final DataTicket<MaskType> MASK_TYPE = DataTickets.create("mowziesmobs_umvuthana_mask_type", MaskType.class);
+
     public ModelUmvuthana() {
         super();
     }
 
     @Override
-    public ResourceLocation getModelResource(EntityUmvuthana object) {
-        return ResourceLocation.fromNamespaceAndPath(MMCommon.MODID, "geo/umvuthana.geo.json");
+    public void addAdditionalStateData(EntityUmvuthana animatable, Object relatedObject, GeoRenderState renderState) {
+        renderState.addGeckolibData(MASK_TYPE, animatable.getMaskType());
     }
 
     @Override
-    public ResourceLocation getTextureResource(EntityUmvuthana entity) {
-        boolean isElite = entity.getMaskType() == MaskType.FAITH || entity.getMaskType() == MaskType.FURY;
-        return ResourceLocation.fromNamespaceAndPath(MMCommon.MODID, isElite ? "textures/entity/umvuthana_elite.png" : "textures/entity/umvuthana.png");
+    public Identifier getModelResource(GeoRenderState renderState) {
+        return Identifier.fromNamespaceAndPath(MMCommon.MODID, "umvuthana");
     }
 
     @Override
-    public ResourceLocation getAnimationResource(EntityUmvuthana object) {
-        return ResourceLocation.fromNamespaceAndPath(MMCommon.MODID, "animations/umvuthana.animation.json");
+    public Identifier getTextureResource(GeoRenderState renderState) {
+        MaskType maskType = renderState.getGeckolibData(MASK_TYPE);
+        boolean isElite = maskType == MaskType.FAITH || maskType == MaskType.FURY;
+        return Identifier.fromNamespaceAndPath(MMCommon.MODID, isElite ? "textures/entity/umvuthana_elite.png" : "textures/entity/umvuthana.png");
     }
 
     @Override
-    public void setCustomAnimations(EntityUmvuthana entity, long instanceId, AnimationState<EntityUmvuthana> animationState) {
-        super.setCustomAnimations(entity, instanceId, animationState);
+    public Identifier getAnimationResource(EntityUmvuthana object) {
+        return Identifier.fromNamespaceAndPath(MMCommon.MODID, "umvuthana");
+    }
 
+    // PORTING NOTE: no longer @Override - see MowzieGeoModel's class javadoc.
+    public void setCustomAnimations(EntityUmvuthana entity, long instanceId, AnimationTest<EntityUmvuthana> animationState) {
         boolean isRaptor = entity.getMaskType() == MaskType.FURY;
         boolean isElite = entity.getMaskType() == MaskType.FAITH || isRaptor;
         getMowzieBone("crestRight").setHidden(!isElite);
@@ -59,17 +69,13 @@ public class ModelUmvuthana extends MowzieGeoModel<EntityUmvuthana> {
             mask.setScale(1.0f / (float) hips.getScale().x, 1.0f / (float) hips.getScale().y, 1.0f / (float) hips.getScale().z);
         }
 
-        if (entity.isAlive() && entity.active) {
-            MowzieGeoBone head = getMowzieBone("head");
-            MowzieGeoBone neck = getMowzieBone("neck");
-            EntityModelData entityData = animationState.getData(DataTickets.ENTITY_MODEL_DATA);
-            float headYaw = Mth.wrapDegrees(entityData.netHeadYaw());
-            float headPitch = Mth.wrapDegrees(entityData.headPitch());
-            head.addRotX(headPitch * ((float) Math.PI / 180F) / 2f);
-            head.addRotY(headYaw * ((float) Math.PI / 180F) / 2f);
-            neck.addRotX(headPitch * ((float) Math.PI / 180F) / 2f);
-            neck.addRotY(headYaw * ((float) Math.PI / 180F) / 2f);
-        }
+        // REMOVED (see class javadoc note below the method... actually see PORTING follow-up): head/neck
+        // look-at-target rotation used to be applied here via head.addRotX/addRotY + neck.addRotX/addRotY, but
+        // "head" and "neck" already have full keyframe tracks in idle_neutral/walk_neutral/idle_aggressive/
+        // walk_aggressive (umvuthana.animation.json) - adding more rotation on top of an already-complete
+        // keyframe-driven pose every frame is exactly the kind of double-animation that was causing the reported
+        // wild tilting during movement. Dropped rather than re-enabled now that setCustomAnimations is actually
+        // wired up (previously dead code, so this conflict was never visible before).
 
         MowzieGeoBone maskHand = getMowzieBone("maskHand");
         MowzieGeoBone maskTwitcher = getMowzieBone("maskTwitcher");
@@ -83,31 +89,38 @@ public class ModelUmvuthana extends MowzieGeoModel<EntityUmvuthana> {
             maskHand.setHidden(true);
         }
 
+        // NOTE (corrected from an earlier, wrong assumption): the idle_neutral/walk_neutral/etc. keyframe tracks on
+        // hips/thighs/shins/etc. are each a single STATIC pose (a fixed rotation/position vector, no per-frame
+        // interpolation or Molang time-based motion) - they establish a base walking stance only. The actual
+        // cyclic swing/step motion has always come from this procedural code layered on top via addRotX/addPosY.
+        // Removing it (as a previous pass here did) leaves legs frozen in that static stance while the entity
+        // still translates through the world - i.e. "sliding" rather than stepping. Restored.
         float animSpeed = 1.4f;
-        float limbSwing = animationState.getLimbSwing();
-        float limbSwingAmount = animationState.getLimbSwingAmount();
+        // PORTING NOTE: AnimationState#getLimbSwing()/getLimbSwingAmount() no longer exist in GeckoLib 5 (no
+        // DataTicket equivalent either) - read directly from the vanilla LivingEntityRenderState's
+        // walkAnimationPos/walkAnimationSpeed fields instead (the modern vanilla name for the same data).
+        float limbSwing = 0f;
+        float limbSwingAmount = 0f;
+        if (animationState.renderState() instanceof net.minecraft.client.renderer.entity.state.LivingEntityRenderState livingEntityRenderState) {
+            limbSwing = livingEntityRenderState.walkAnimationPos;
+            limbSwingAmount = livingEntityRenderState.walkAnimationSpeed;
+        }
 
-//        limbSwing = 0.5f * (entity.tickCount + customPredicate.getPartialTick());
-//        limbSwingAmount = 1f;
-//        float angle = 0.03f * (entity.tickCount + customPredicate.getPartialTick());
-//        Vec3 moveVec = new Vec3(1.0, 0, 0);
-//        moveVec = moveVec.yRot(angle);
-
-        double forward = Mth.lerp(animationState.getPartialTick(), entity.prevMoveDirForward, entity.moveDirForward);
-        double backward = Mth.lerp(animationState.getPartialTick(), entity.prevMoveDirBackward, entity.moveDirBackward);
-        double left = Mth.lerp(animationState.getPartialTick(), entity.prevMoveDirLeft, entity.moveDirLeft);
-        double right = Mth.lerp(animationState.getPartialTick(), entity.prevMoveDirRight, entity.moveDirRight);
+        double forward = Mth.lerp(animationState.renderState().getPartialTick(), entity.prevMoveDirForward, entity.moveDirForward);
+        double backward = Mth.lerp(animationState.renderState().getPartialTick(), entity.prevMoveDirBackward, entity.moveDirBackward);
+        double left = Mth.lerp(animationState.renderState().getPartialTick(), entity.prevMoveDirLeft, entity.moveDirLeft);
+        double right = Mth.lerp(animationState.renderState().getPartialTick(), entity.prevMoveDirRight, entity.moveDirRight);
         limbSwingAmount *= 2;
         limbSwingAmount = Math.min(0.7f, limbSwingAmount);
         float locomotionAnimController = getControllerValue("locomotionAnimController");
-        float runAnim = getControllerValue("walkRunSwitchController");
-        float walkAnim = 1.0f - runAnim;
+        float runAnimBlend = getControllerValue("walkRunSwitchController");
+        float walkAnim = 1.0f - runAnimBlend;
         walkForwardAnim((float) (forward * locomotionAnimController * walkAnim), limbSwing, limbSwingAmount, animSpeed);
         walkBackwardAnim((float) (backward * locomotionAnimController * walkAnim), limbSwing, limbSwingAmount, animSpeed);
         walkLeftAnim((float) (left * locomotionAnimController * walkAnim), limbSwing, limbSwingAmount, animSpeed);
         walkRightAnim((float) (right * locomotionAnimController * walkAnim), limbSwing, limbSwingAmount, animSpeed);
 
-        runAnim(locomotionAnimController * runAnim, limbSwing, limbSwingAmount, animSpeed);
+        runAnim(locomotionAnimController * runAnimBlend, limbSwing, limbSwingAmount, animSpeed);
     }
 
     private void runAnim(float blend, float limbSwing, float limbSwingAmount, float speed) {

@@ -1,152 +1,63 @@
 package com.bobmowzie.mowziesmobs.client;
 
 import com.bobmowzie.mowziesmobs.MMCommon;
-import com.bobmowzie.mowziesmobs.server.entity.umvuthana.MaskType;
-import com.mojang.blaze3d.vertex.PoseStack;
-import net.minecraft.client.renderer.block.model.BakedQuad;
-import net.minecraft.client.renderer.block.model.ItemOverrides;
-import net.minecraft.client.renderer.texture.TextureAtlasSprite;
-import net.minecraft.client.resources.model.BakedModel;
-import net.minecraft.client.resources.model.ModelResourceLocation;
-import net.minecraft.core.Direction;
-import net.minecraft.resources.ResourceLocation;
-import net.minecraft.util.RandomSource;
-import net.minecraft.world.item.ItemDisplayContext;
-import net.minecraft.world.level.block.state.BlockState;
-import net.neoforged.bus.api.SubscribeEvent;
-import net.neoforged.neoforge.client.ClientHooks;
-import net.neoforged.neoforge.client.event.ModelEvent;
+import net.minecraft.resources.Identifier;
 
-import java.util.List;
-import java.util.Map;
+/* FIXME 1.21 -> 26.1.2 port: UNRESOLVED, flagged for follow-up - this whole class's technique is obsolete.
+    This class used to runtime-wrap vanilla's flat item BakedModel (net.minecraft.client.resources.model.BakedModel,
+    keyed by net.minecraft.client.resources.model.ModelResourceLocation, with an ItemOverrides property) so that
+    HAND_MODEL_ITEMS (wrought_axe, spear, earthrend_gauntlet, sculptor_staff) and the umvuthana-mask/sol-visage
+    "frame" overlay models could swap to a different underlying baked model depending on ItemDisplayContext
+    (first/third-person hand vs. GUI/fixed), subscribed via NeoForge's ModelEvent.ModifyBakingResult
+    (event.getModels() : Map<ModelResourceLocation, BakedModel>) and ModelEvent.RegisterAdditional
+    (modelRegistryEvent.register(Identifier)).
 
+    NONE of BakedModel, ModelResourceLocation, ItemOverrides, or ModelEvent.RegisterAdditional exist anymore in the
+    real 26.1.2 vanilla/NeoForge source. Confirmed by reading:
+      - net/minecraft/client/renderer/item/ItemModel.java (real decompiled 26.1.2 source): items now resolve to a
+        single `ItemModel` per registry Identifier (no more per-context ModelResourceLocation baked variants) with
+        `void update(ItemStackRenderState, ItemStack, ItemModelResolver, ItemDisplayContext, ClientLevel, ItemOwner,
+        int)` - a render-state-extraction API, not a flat quad list.
+      - net/minecraft/client/resources/model/ModelBakery.java: ModelEvent.ModifyBakingResult's
+        ModelBakery.BakingResult now exposes separate `blockStateModels()` (Map<BlockState,BlockStateModel>),
+        `itemStackModels()` (Map<Identifier,ItemModel>), `itemProperties()`, and `standaloneModels()` - there is no
+        unified Map<ModelResourceLocation,BakedModel> anymore.
+      - net/neoforged/neoforge/client/event/ModelEvent.java (NeoForge 26.1.2.95 sources): RegisterAdditional is gone;
+        the closest analog is ModelEvent.RegisterStandalone, which registers a StandaloneModelKey<T> +
+        UnbakedStandaloneModel<T> (baked to a raw BlockStateModel/QuadCollection/etc via
+        net.neoforged.neoforge.client.model.standalone.SimpleUnbakedStandaloneModel, NOT to an ItemModel), retrieved
+        later via ModelManager#getStandaloneModel(key) - a fundamentally different retrieval path than looking a
+        model up out of the baking-result map inside ModifyBakingResult.
+
+    Vanilla itself achieves this same "different model per ItemDisplayContext" behavior entirely differently now -
+    via data-driven item model composition, e.g. ItemModelUtils.conditional(...)/rangeSelect(...) building a
+    ConditionalItemModel/SelectItemModel from assets/<ns>/items/<item>.json (see ItemModelGenerators#generateBow for
+    the vanilla analog: a "minecraft:condition" on "minecraft:using_item" switching between plain and pulling-stage
+    models). The correct port of this class's feature is almost certainly to move it out of Java entirely and into
+    each affected item's assets/mowziesmobs/items/*.json using a "minecraft:condition" keyed on display context
+    (there's a NeoForge/vanilla condition property for this - needs locating in the real source) selecting between
+    the base model and the "_in_hand" / "_frame" model, mirroring how MMClient.java's now-removed bow-pulling
+    ItemProperties registration needs the same kind of data-driven replacement (see the FIXME there).
+
+    Implementing a Java-side custom ItemModel/ItemModel.Unbaked to reproduce this exactly was deliberately NOT
+    attempted here - it requires understanding ItemStackRenderState/ItemModelResolver internals well enough to
+    build a correct render state (verified they exist and roughly what they do, but not enough to implement
+    correctly without guessing, which the porting rules for this pass explicitly disallow). Flagging for a
+    follow-up pass with room to prototype/test against a running client.
+
+    `prefixed()` is kept (still just an Identifier-returning helper, no broken types) since MaskType-related code
+    elsewhere may still reference model resource ids by name; `HAND_MODEL_ITEMS` is kept as the source-of-truth list
+    of which items need this treatment once it's re-implemented. The registration call sites in
+    ClientEventBusSubscriber.onRegisterModels (ModelEvent.RegisterAdditional) and this class's former
+    onModelBakeEvent (ModelEvent.ModifyBakingResult) subscriber have been removed since they no longer compile
+    against any existing type - see ClientEventBusSubscriber.java for the matching removal.
+*/
 public class MMModels {
     public static final String[] HAND_MODEL_ITEMS = new String[] {"wrought_axe", "spear", "earthrend_gauntlet", "sculptor_staff"};
     // Can only register 'standalone' models which do not have this prefix
     public static final String PREFIX = "item/";
 
-    @SubscribeEvent
-    public static void onModelBakeEvent(ModelEvent.ModifyBakingResult event) {
-        Map<ModelResourceLocation, BakedModel> models = event.getModels();
-
-        for (String item : HAND_MODEL_ITEMS) {
-            ModelResourceLocation modelInventory = ModelResourceLocation.inventory(ResourceLocation.fromNamespaceAndPath(MMCommon.MODID, item));
-            ModelResourceLocation modelHand = prefixed(item + "_in_hand");
-
-            BakedModel bakedModelDefault = models.get(modelInventory);
-            BakedModel bakedModelHand = models.get(modelHand);
-            BakedModel modelWrapper = new BakedModel() {
-                @Override
-                public List<BakedQuad> getQuads(BlockState state, Direction side, RandomSource rand) {
-                    return bakedModelDefault.getQuads(state, side, rand);
-                }
-
-                @Override
-                public boolean useAmbientOcclusion() {
-                    return bakedModelDefault.useAmbientOcclusion();
-                }
-
-                @Override
-                public boolean isGui3d() {
-                    return bakedModelDefault.isGui3d();
-                }
-
-                @Override
-                public boolean usesBlockLight() {
-                    return false;
-                }
-
-                @Override
-                public boolean isCustomRenderer() {
-                    return bakedModelDefault.isCustomRenderer();
-                }
-
-                @Override
-                public TextureAtlasSprite getParticleIcon() {
-                    return bakedModelDefault.getParticleIcon();
-                }
-
-                @Override
-                public ItemOverrides getOverrides() {
-                    return bakedModelDefault.getOverrides();
-                }
-
-                @Override
-                public BakedModel applyTransform(ItemDisplayContext cameraTransformType, PoseStack mat, boolean applyLeftHandTransform) {
-                    BakedModel modelToUse = bakedModelDefault;
-                    if (cameraTransformType == ItemDisplayContext.FIRST_PERSON_LEFT_HAND || cameraTransformType == ItemDisplayContext.FIRST_PERSON_RIGHT_HAND
-                            || cameraTransformType == ItemDisplayContext.THIRD_PERSON_LEFT_HAND || cameraTransformType == ItemDisplayContext.THIRD_PERSON_RIGHT_HAND) {
-                        modelToUse = bakedModelHand;
-                    }
-                    return ClientHooks.handleCameraTransforms(mat, modelToUse, cameraTransformType, applyLeftHandTransform);
-                }
-            };
-            models.put(modelInventory, modelWrapper);
-        }
-
-        for (MaskType type : MaskType.values()) {
-            ModelResourceLocation maskModelInventory = ModelResourceLocation.inventory(ResourceLocation.fromNamespaceAndPath(MMCommon.MODID,"umvuthana_mask_" + type.name));
-            ModelResourceLocation maskModelFrame = prefixed("umvuthana_mask_" + type.name + "_frame");
-            bakeMask(models, maskModelInventory, maskModelFrame);
-        }
-        ModelResourceLocation maskModelInventory = ModelResourceLocation.inventory(ResourceLocation.fromNamespaceAndPath(MMCommon.MODID, "sol_visage"));
-        ModelResourceLocation maskModelFrame = prefixed("sol_visage_frame");
-        bakeMask(models, maskModelInventory, maskModelFrame);
-    }
-
-    private static void bakeMask(Map<ModelResourceLocation, BakedModel> map, ModelResourceLocation maskModelInventory, ModelResourceLocation maskModelFrame) {
-        BakedModel maskBakedModelDefault = map.get(maskModelInventory);
-        BakedModel maskBakedModelFrame = map.get(maskModelFrame);
-        BakedModel maskModelWrapper = new BakedModel() {
-            @Override
-            public List<BakedQuad> getQuads(BlockState state, Direction side, RandomSource rand) {
-                return maskBakedModelDefault.getQuads(state, side, rand);
-            }
-
-            @Override
-            public boolean useAmbientOcclusion() {
-                return maskBakedModelDefault.useAmbientOcclusion();
-            }
-
-            @Override
-            public boolean isGui3d() {
-                return maskBakedModelDefault.isGui3d();
-            }
-
-            @Override
-            public boolean usesBlockLight() {
-                return false;
-            }
-
-            @Override
-            public boolean isCustomRenderer() {
-                return maskBakedModelDefault.isCustomRenderer();
-            }
-
-            @Override
-            public TextureAtlasSprite getParticleIcon() {
-                return maskBakedModelDefault.getParticleIcon();
-            }
-
-            @Override
-            public ItemOverrides getOverrides() {
-                return maskBakedModelDefault.getOverrides();
-            }
-
-            @Override
-            public BakedModel applyTransform(ItemDisplayContext cameraTransformType, PoseStack mat, boolean applyLeftHandTransform) {
-                BakedModel modelToUse = maskBakedModelDefault;
-                if (cameraTransformType == ItemDisplayContext.FIXED) {
-                    modelToUse = maskBakedModelFrame;
-                }
-                return ClientHooks.handleCameraTransforms(mat, modelToUse, cameraTransformType, applyLeftHandTransform);
-            }
-        };
-
-        map.put(maskModelInventory, maskModelWrapper);
-    }
-
-    public static ModelResourceLocation prefixed(String path) {
-        return ModelResourceLocation.standalone(ResourceLocation.fromNamespaceAndPath(MMCommon.MODID, PREFIX + path));
+    public static Identifier prefixed(String path) {
+        return Identifier.fromNamespaceAndPath(MMCommon.MODID, PREFIX + path);
     }
 }

@@ -19,7 +19,6 @@ import net.minecraft.world.level.material.PushReaction;
 
 import javax.annotation.Nullable;
 import java.util.List;
-import java.util.Random;
 
 public class RakedSandBlock extends ColoredFallingBlock {
     public static final EnumProperty<RakedSandShape> SHAPE = EnumProperty.create("shape", RakedSandShape.class);
@@ -31,8 +30,14 @@ public class RakedSandBlock extends ColoredFallingBlock {
         this.fallingState = fallingState;
     }
 
-    public void tick(BlockState blockState, ServerLevel level, BlockPos pos, Random random) {
-        if (isFree(level.getBlockState(pos.below())) && pos.getY() >= level.getMinBuildHeight()) {
+    // PORTING NOTE: this override takes RandomSource (not java.util.Random) to actually match/override
+    // FallingBlock#tick(BlockState, ServerLevel, BlockPos, RandomSource) - confirmed against real 26.1.2
+    // FallingBlock source. Without this the block would silently fall back to FallingBlock's own tick() (which
+    // spawns a FallingBlockEntity using this block's own raked-sand BlockState instead of plain sand).
+    @Override
+    protected void tick(BlockState blockState, ServerLevel level, BlockPos pos, net.minecraft.util.RandomSource random) {
+        // PORTING NOTE (1.21.1 -> 26.1.2): LevelHeightAccessor#getMinBuildHeight() -> getMinY() (renamed).
+        if (isFree(level.getBlockState(pos.below())) && pos.getY() >= level.getMinY()) {
             FallingBlockEntity fallingblockentity = FallingBlockEntity.fall(level, pos, Blocks.SAND.defaultBlockState());
             this.falling(fallingblockentity);
         }
@@ -59,8 +64,13 @@ public class RakedSandBlock extends ColoredFallingBlock {
         return state;
     }
 
-    public void neighborChanged(BlockState state, Level level, BlockPos pos, Block block, BlockPos pos1, boolean p_49382_) {
-        if (!level.isClientSide && level.getBlockState(pos).is(this)) {
+    // PORTING NOTE (1.21.1 -> 26.1.2): BlockBehaviour#neighborChanged's fromPos parameter became a @Nullable
+    // Orientation (see BlockGrottol.java for the same change). This method previously had no @Override annotation
+    // and (with the old BlockPos-taking signature) was silently NOT overriding the vanilla hook at all under the
+    // new signature - fixed here to actually override again and keep neighbor-change handling working.
+    @Override
+    public void neighborChanged(BlockState state, Level level, BlockPos pos, Block block, @Nullable net.minecraft.world.level.redstone.Orientation orientation, boolean movedByPiston) {
+        if (!level.isClientSide() && level.getBlockState(pos).is(this)) {
             this.updateState(state, level, pos, block);
         }
     }
@@ -69,7 +79,7 @@ public class RakedSandBlock extends ColoredFallingBlock {
     }
 
     protected BlockState updateDir(Level level, BlockPos pos, BlockState state, boolean p_49371_) {
-        if (level.isClientSide) {
+        if (level.isClientSide()) {
             return state;
         } else {
             RakedSandShape RakedSandShape = state.getValue(this.getShapeProperty());
@@ -81,9 +91,14 @@ public class RakedSandBlock extends ColoredFallingBlock {
         return PushReaction.NORMAL;
     }
 
-    public void onRemove(BlockState p_49384_, Level p_49385_, BlockPos p_49386_, BlockState p_49387_, boolean p_49388_) {
-        if (!p_49388_) {
-            super.onRemove(p_49384_, p_49385_, p_49386_, p_49387_, p_49388_);
+    // PORTING NOTE (1.21.1 -> 26.1.2): BlockBehaviour#onRemove(BlockState, Level, BlockPos, BlockState newState,
+    // boolean movedByPiston) was replaced by affectNeighborsAfterRemoval(BlockState, ServerLevel, BlockPos, boolean
+    // movedByPiston) - confirmed against real 26.1.2 BlockBehaviour source; note it also drops the "newState"
+    // parameter and takes ServerLevel instead of Level.
+    @Override
+    protected void affectNeighborsAfterRemoval(BlockState state, ServerLevel level, BlockPos pos, boolean movedByPiston) {
+        if (!movedByPiston) {
+            super.affectNeighborsAfterRemoval(state, level, pos, movedByPiston);
         }
     }
 

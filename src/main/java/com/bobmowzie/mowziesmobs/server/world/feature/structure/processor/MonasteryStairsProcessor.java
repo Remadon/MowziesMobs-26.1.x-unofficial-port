@@ -46,7 +46,7 @@ public class MonasteryStairsProcessor extends StructureProcessor {
                 blocksToPlace = RAIL;
                 blockInfoGlobal = new StructureTemplate.StructureBlockInfo(blockInfoGlobal.pos(), cobbledDeepslate, blockInfoGlobal.nbt());
             }
-            if (levelReader instanceof WorldGenRegion worldGenRegion && !worldGenRegion.getCenter().equals(new ChunkPos(blockInfoGlobal.pos()))) {
+            if (levelReader instanceof WorldGenRegion worldGenRegion && !worldGenRegion.getCenter().equals(ChunkPos.containing(blockInfoGlobal.pos()))) {
                 return blockInfoGlobal;
             }
 
@@ -57,8 +57,11 @@ public class MonasteryStairsProcessor extends StructureProcessor {
 
                 int j = 0;
                 // Loop down to the ground
-                while (mutable.getY() > levelReader.getMinBuildHeight()
-                        && mutable.getY() < levelReader.getMaxBuildHeight()
+                // PORTING NOTE: getMinBuildHeight/getMaxBuildHeight -> getMinY/getMaxY, and ChunkAccess#setBlockState's
+                // 3rd param is now an int update-flags bitmask, not a boolean "isMoving" flag (see
+                // BaseProcessor.java for the fuller writeup).
+                while (mutable.getY() > levelReader.getMinY()
+                        && mutable.getY() < levelReader.getMaxY()
                         && !currBlockState.isSolid()) {
                     BlockState newState;
                     // Use the array blocks for the first two, then switch to random base generation
@@ -69,7 +72,7 @@ public class MonasteryStairsProcessor extends StructureProcessor {
                     else {
                         newState = chooseRandomState(random);
                     }
-                    levelReader.getChunk(mutable).setBlockState(mutable, newState, false);
+                    levelReader.getChunk(mutable).setBlockState(mutable, newState, net.minecraft.world.level.block.Block.UPDATE_ALL);
 
                     // Update to next position
                     mutable.move(Direction.DOWN);

@@ -60,7 +60,7 @@ public class EntityPoisonBall extends EntityMagicEffect {
                 if (entity == getCaster()) continue;
                 if (entity instanceof EntityNaga) continue;
                 if (entity instanceof ItemEntity) continue;
-                if (entity.hurt(damageSources().indirectMagic(this, getCaster()), 3 * ConfigHandler.COMMON.MOBS.NAGA.combatConfig.attackMultiplier.get().floatValue()) && entity instanceof LivingEntity) {
+                if (entity.hurtOrSimulate(damageSources().indirectMagic(this, getCaster()), 3 * ConfigHandler.COMMON.MOBS.NAGA.combatConfig.attackMultiplier.get().floatValue()) && entity instanceof LivingEntity) {
                     ((LivingEntity)entity).addEffect(new MobEffectInstance(MobEffects.POISON, 80, 1, false, true));
                 }
             }
@@ -68,7 +68,7 @@ public class EntityPoisonBall extends EntityMagicEffect {
 
         if (!level().noCollision(this, getBoundingBox().inflate(0.1))) explode();
 
-        if (level().isClientSide) {
+        if (level().isClientSide()) {
             float scale = 1f;
             int steps = 4;
             double motionX = getDeltaMovement().x;
@@ -119,7 +119,7 @@ public class EntityPoisonBall extends EntityMagicEffect {
             for (Entity entity : entitiesHit) {
                 if (entity == getCaster()) continue;
                 if (entity instanceof EntityNaga) continue;
-                if (entity.hurt(damageSources().indirectMagic(this, getCaster()), 3 * ConfigHandler.COMMON.MOBS.NAGA.combatConfig.attackMultiplier.get().floatValue()) && entity instanceof LivingEntity livingEntity) {
+                if (entity.hurtOrSimulate(damageSources().indirectMagic(this, getCaster()), 3 * ConfigHandler.COMMON.MOBS.NAGA.combatConfig.attackMultiplier.get().floatValue()) && entity instanceof LivingEntity livingEntity) {
                     livingEntity.addEffect(new MobEffectInstance(MobEffects.POISON, 80, 0, false, true));
                 }
             }
@@ -129,7 +129,7 @@ public class EntityPoisonBall extends EntityMagicEffect {
     }
 
     private void spawnExplosionParticles() {
-        if (level().isClientSide) {
+        if (level().isClientSide()) {
             float explodeSpeed = 3.5f;
             for (int i = 0; i < 26; i++) {
                 Vec3 particlePos = new Vec3(random.nextFloat() * 0.25, 0, 0);

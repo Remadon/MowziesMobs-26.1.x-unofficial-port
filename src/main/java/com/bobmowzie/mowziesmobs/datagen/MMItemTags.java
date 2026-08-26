@@ -5,16 +5,13 @@ import com.bobmowzie.mowziesmobs.server.block.BlockHandler;
 import com.bobmowzie.mowziesmobs.server.item.ItemHandler;
 import net.minecraft.core.HolderLookup;
 import net.minecraft.data.PackOutput;
-import net.minecraft.data.tags.ItemTagsProvider;
-import net.minecraft.resources.ResourceLocation;
+import net.minecraft.resources.Identifier;
 import net.minecraft.tags.ItemTags;
 import net.minecraft.tags.TagKey;
 import net.minecraft.world.item.Item;
-import net.minecraft.world.level.block.Block;
 import net.neoforged.neoforge.common.Tags;
-import net.neoforged.neoforge.common.data.ExistingFileHelper;
+import net.neoforged.neoforge.common.data.ItemTagsProvider;
 import org.jetbrains.annotations.NotNull;
-import org.jetbrains.annotations.Nullable;
 
 import java.util.concurrent.CompletableFuture;
 
@@ -22,8 +19,8 @@ public class MMItemTags extends ItemTagsProvider {
     public static final TagKey<Item> CAN_HIT_GROTTOL = key("can_hit_grottol");
     public static final TagKey<Item> HAND_WEAPONS = key("hand_weapons");
 
-    public MMItemTags(PackOutput output, CompletableFuture<HolderLookup.Provider> lookupProvider, CompletableFuture<TagLookup<Block>> blockTags, @Nullable ExistingFileHelper existingFileHelper) {
-        super(output, lookupProvider, blockTags, MMCommon.MODID, existingFileHelper);
+    public MMItemTags(PackOutput output, CompletableFuture<HolderLookup.Provider> lookupProvider) {
+        super(output, lookupProvider, MMCommon.MODID);
     }
 
     @Override
@@ -31,9 +28,14 @@ public class MMItemTags extends ItemTagsProvider {
         addToVanillaTags();
         addToCommonTags();
 
+        // PORTING NOTE (1.21.1 -> 26.1.2): TagAppender#addOptional(E) now takes an already-resolved element (Item
+        // here), not an Identifier - it no longer means "this reference to a possibly-absent item/mod is optional".
+        // That old by-id-optional-reference behavior is now expressed via TagEntry.optionalElement(Identifier) fed
+        // into TagAppender#add(TagEntry) (confirmed against real 26.1.2 net.minecraft.tags.TagEntry /
+        // net.minecraft.data.tags.TagAppender source).
         tag(CAN_HIT_GROTTOL)
-                .addOptional(ResourceLocation.fromNamespaceAndPath("cagedmobs", "dnasamplerdiamond"))
-                .addOptional(ResourceLocation.fromNamespaceAndPath("cagedmobs", "dnasamplernetherite"));
+                .add(net.minecraft.tags.TagEntry.optionalElement(Identifier.fromNamespaceAndPath("cagedmobs", "dnasamplerdiamond")))
+                .add(net.minecraft.tags.TagEntry.optionalElement(Identifier.fromNamespaceAndPath("cagedmobs", "dnasamplernetherite")));
 
         tag(HAND_WEAPONS).add(ItemHandler.EARTHREND_GAUNTLET.value());
     }
@@ -43,11 +45,11 @@ public class MMItemTags extends ItemTagsProvider {
                 .add(ItemHandler.SPEAR.value())
                 .add(ItemHandler.NAGA_FANG_DAGGER.value());
 
+        // PORTING NOTE (1.21.1 -> 26.1.2): ItemTags.SWORD_ENCHANTABLE ("enchantable/sword") no longer exists as a
+        // separate constant - confirmed against real 26.1.2 net.minecraft.tags.ItemTags source, its items were
+        // folded into the broader SHARP_WEAPON_ENCHANTABLE ("enchantable/sharp_weapon") tag, which is already
+        // applied to these same items just above. The old duplicate SWORD_ENCHANTABLE call is dropped as redundant.
         tag(ItemTags.SHARP_WEAPON_ENCHANTABLE)
-                .add(ItemHandler.SPEAR.value())
-                .add(ItemHandler.NAGA_FANG_DAGGER.value());
-
-        tag(ItemTags.SWORD_ENCHANTABLE)
                 .add(ItemHandler.SPEAR.value())
                 .add(ItemHandler.NAGA_FANG_DAGGER.value());
 
@@ -86,13 +88,18 @@ public class MMItemTags extends ItemTagsProvider {
     }
 
     private void addToCommonTags() {
-        tag(Tags.Items.TOOLS_SPEAR).add(ItemHandler.SPEAR.value());
+        // PORTING NOTE (1.21.1 -> 26.1.2): Tags.Items.TOOLS_SPEAR no longer exists - confirmed via javap against
+        // the real 26.1.2.95 neoforge jar (net.neoforged.neoforge.common.Tags$Items has no SPEAR-related field or
+        // "spear" tag path at all anymore; the c:tools/spear convention tag was dropped/never re-added). Using
+        // TOOLS_TRIDENT as the closest surviving common tag for a thrown melee polearm weapon - a judgment call,
+        // flagged here in case the common-tags convention re-adds a dedicated spear tag later.
+        tag(Tags.Items.TOOLS_TRIDENT).add(ItemHandler.SPEAR.value());
         tag(Tags.Items.MUSIC_DISCS).add(ItemHandler.PETIOLE_MUSIC_DISC.value());
         tag(Tags.Items.SEEDS).add(ItemHandler.FOLIAATH_SEED.value());
         tag(Tags.Items.SLIME_BALLS).add(ItemHandler.GLOWING_JELLY.value());
     }
 
     private static TagKey<Item> key(String path) {
-        return ItemTags.create(ResourceLocation.fromNamespaceAndPath(MMCommon.MODID, path));
+        return ItemTags.create(Identifier.fromNamespaceAndPath(MMCommon.MODID, path));
     }
 }

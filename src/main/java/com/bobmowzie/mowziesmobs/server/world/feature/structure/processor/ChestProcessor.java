@@ -5,7 +5,7 @@ import com.mojang.serialization.codecs.RecordCodecBuilder;
 import net.minecraft.core.BlockPos;
 import net.minecraft.core.registries.Registries;
 import net.minecraft.resources.ResourceKey;
-import net.minecraft.resources.ResourceLocation;
+import net.minecraft.resources.Identifier;
 import net.minecraft.util.RandomSource;
 import net.minecraft.world.level.LevelReader;
 import net.minecraft.world.level.block.entity.RandomizableContainerBlockEntity;
@@ -18,7 +18,9 @@ import net.minecraft.world.level.storage.loot.LootTable;
 public class ChestProcessor extends StructureProcessor {
     public static final MapCodec<ChestProcessor> CODEC = RecordCodecBuilder.mapCodec(instance -> instance
             .group(
-                    ResourceLocation.CODEC.fieldOf("loot_table").xmap(location -> ResourceKey.create(Registries.LOOT_TABLE, location), ResourceKey::location).forGetter(config -> config.lootTable)
+                    // PORTING NOTE (1.21.1 -> 26.1.2): ResourceKey#location() was renamed to identifier() (confirmed
+                    // against real 26.1.2 ResourceKey source).
+                    Identifier.CODEC.fieldOf("loot_table").xmap(location -> ResourceKey.create(Registries.LOOT_TABLE, location), ResourceKey::identifier).forGetter(config -> config.lootTable)
             ).apply(instance, instance.stable(ChestProcessor::new)));
 
     private final ResourceKey<LootTable> lootTable;

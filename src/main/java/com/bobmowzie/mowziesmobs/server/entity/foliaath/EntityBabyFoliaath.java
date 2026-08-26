@@ -23,16 +23,19 @@ import net.minecraft.util.Mth;
 import net.minecraft.world.damagesource.DamageSource;
 import net.minecraft.world.entity.Entity;
 import net.minecraft.world.entity.EntityType;
-import net.minecraft.world.entity.MobSpawnType;
+import net.minecraft.world.entity.EntitySpawnReason;
 import net.minecraft.world.entity.ai.attributes.AttributeSupplier;
 import net.minecraft.world.entity.ai.attributes.Attributes;
 import net.minecraft.world.entity.item.ItemEntity;
 import net.minecraft.world.entity.player.Player;
 import net.minecraft.world.item.ItemStack;
+import net.minecraft.world.item.ItemStackTemplate;
 import net.minecraft.world.level.Level;
 import net.minecraft.world.level.LevelAccessor;
 import net.minecraft.world.level.block.Blocks;
 import net.minecraft.world.level.block.state.BlockState;
+import net.minecraft.world.level.storage.ValueInput;
+import net.minecraft.world.level.storage.ValueOutput;
 import net.neoforged.neoforge.common.Tags;
 import org.jetbrains.annotations.NotNull;
 
@@ -103,7 +106,7 @@ public class EntityBabyFoliaath extends MowzieLLibraryEntity {
         }
         prevActivate = activate.getTimer();
 
-        if (!level().isClientSide && getHungry() && getAnimation() == NO_ANIMATION) {
+        if (!level().isClientSide() && getHungry() && getAnimation() == NO_ANIMATION) {
             for (ItemEntity meat : getMeatsNearby(0.4, 0.2, 0.4, 0.4)) {
                 ItemStack stack = meat.getItem().split(1);
                 if (!stack.isEmpty()) {
@@ -116,14 +119,14 @@ public class EntityBabyFoliaath extends MowzieLLibraryEntity {
                 }
             }
         }
-        if (level().isClientSide && getAnimation() == EAT_ANIMATION && (getAnimationTick() == 3 || getAnimationTick() == 7 || getAnimationTick() == 11 || getAnimationTick() == 15 || getAnimationTick() == 19)) {
+        if (level().isClientSide() && getAnimation() == EAT_ANIMATION && (getAnimationTick() == 3 || getAnimationTick() == 7 || getAnimationTick() == 11 || getAnimationTick() == 15 || getAnimationTick() == 19)) {
             for (int i = 0; i <= 5; i++) {
-                level().addParticle(new ItemParticleOption(ParticleTypes.ITEM, getEating()), getX(), getY() + 0.2, getZ(), random.nextFloat() * 0.2 - 0.1, random.nextFloat() * 0.2, random.nextFloat() * 0.2 - 0.1);
+                level().addParticle(new ItemParticleOption(ParticleTypes.ITEM, ItemStackTemplate.fromNonEmptyStack(getEating())), getX(), getY() + 0.2, getZ(), random.nextFloat() * 0.2 - 0.1, random.nextFloat() * 0.2, random.nextFloat() * 0.2 - 0.1);
             }
         }
 
         //Growing
-        if (!level().isClientSide) {
+        if (!level().isClientSide()) {
             if (tickCount % 20 == 0 && !getHungry()) {
                 incrementGrowth();
             }
@@ -166,7 +169,7 @@ public class EntityBabyFoliaath extends MowzieLLibraryEntity {
             for (Player player : players) {
                 ItemStack stack = player.getMainHandItem();
                 // TODO :: add own tag?
-                if ((stack.is(Tags.Items.FOODS_RAW_MEAT) || stack.is(Tags.Items.FOODS_COOKED_MEAT)) && stack.getFoodProperties(null) != null) {
+                if ((stack.is(Tags.Items.FOODS_RAW_MEAT) || stack.is(Tags.Items.FOODS_COOKED_MEAT)) && stack.has(net.minecraft.core.component.DataComponents.FOOD)) {
                     return true;
                 }
             }
@@ -200,7 +203,7 @@ public class EntityBabyFoliaath extends MowzieLLibraryEntity {
     }
 
     @Override
-    public boolean checkSpawnRules(LevelAccessor world, MobSpawnType reason) {
+    public boolean checkSpawnRules(LevelAccessor world, EntitySpawnReason reason) {
         if (world.isUnobstructed(this) && world.noCollision(this) && !world.containsAnyLiquid(getBoundingBox())) {
             BlockPos ground = new BlockPos(
                     Mth.floor(getX()),
@@ -225,7 +228,7 @@ public class EntityBabyFoliaath extends MowzieLLibraryEntity {
             if (entityNeighbor instanceof ItemEntity itemEntity && distanceTo(entityNeighbor) <= radius) {
                 ItemStack stack = itemEntity.getItem();
                 // TODO :: add own tag?
-                if ((stack.is(Tags.Items.FOODS_RAW_MEAT) || stack.is(Tags.Items.FOODS_COOKED_MEAT)) && stack.getFoodProperties(null) != null) {
+                if ((stack.is(Tags.Items.FOODS_RAW_MEAT) || stack.is(Tags.Items.FOODS_COOKED_MEAT)) && stack.has(net.minecraft.core.component.DataComponents.FOOD)) {
                     listEntityItem.add(itemEntity);
                 }
             }
@@ -234,15 +237,15 @@ public class EntityBabyFoliaath extends MowzieLLibraryEntity {
     }
 
     @Override
-    public void addAdditionalSaveData(CompoundTag compound) {
-        super.addAdditionalSaveData(compound);
-        compound.putInt("tickGrowth", getGrowth());
+    public void addAdditionalSaveData(ValueOutput output) {
+        super.addAdditionalSaveData(output);
+        output.putInt("tickGrowth", getGrowth());
     }
 
     @Override
-    public void readAdditionalSaveData(CompoundTag compound) {
-        super.readAdditionalSaveData(compound);
-        setGrowth(compound.getInt("tickGrowth"));
+    public void readAdditionalSaveData(ValueInput input) {
+        super.readAdditionalSaveData(input);
+        setGrowth(input.getIntOr("tickGrowth", 0));
     }
 
     @Override

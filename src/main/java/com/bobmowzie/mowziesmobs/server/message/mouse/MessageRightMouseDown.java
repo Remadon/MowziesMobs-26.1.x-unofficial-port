@@ -10,7 +10,7 @@ import com.bobmowzie.mowziesmobs.server.power.Power;
 import io.netty.buffer.ByteBuf;
 import net.minecraft.network.codec.StreamCodec;
 import net.minecraft.network.protocol.common.custom.CustomPacketPayload;
-import net.minecraft.resources.ResourceLocation;
+import net.minecraft.resources.Identifier;
 import net.minecraft.world.entity.player.Player;
 import net.neoforged.neoforge.network.handling.IPayloadContext;
 import org.jetbrains.annotations.NotNull;
@@ -19,7 +19,7 @@ import org.jetbrains.annotations.NotNull;
  * Created by BobMowzie on 5/25/2017.
  */
 public record MessageRightMouseDown() implements CustomPacketPayload {
-    public static final CustomPacketPayload.Type<MessageRightMouseDown> TYPE = new CustomPacketPayload.Type<>(ResourceLocation.fromNamespaceAndPath(MMCommon.MODID, "message_right_mouse_down"));
+    public static final CustomPacketPayload.Type<MessageRightMouseDown> TYPE = new CustomPacketPayload.Type<>(Identifier.fromNamespaceAndPath(MMCommon.MODID, "message_right_mouse_down"));
     public static final StreamCodec<ByteBuf, MessageRightMouseDown> STREAM_CODEC = StreamCodec.unit(new MessageRightMouseDown());
 
     public static void handleServer(final MessageRightMouseDown packet, final IPayloadContext context) {

@@ -2,21 +2,34 @@ package com.bobmowzie.mowziesmobs.client.gui;
 
 import com.bobmowzie.mowziesmobs.MMCommon;
 import com.bobmowzie.mowziesmobs.server.entity.EntityHandler;
-import com.mojang.blaze3d.systems.RenderSystem;
 import net.minecraft.ChatFormatting;
 import net.minecraft.client.Minecraft;
-import net.minecraft.client.gui.GuiGraphics;
+import net.minecraft.client.gui.GuiGraphicsExtractor;
+import net.minecraft.client.renderer.RenderPipelines;
 import net.minecraft.core.registries.BuiltInRegistries;
 import net.minecraft.network.chat.Component;
-import net.minecraft.resources.ResourceLocation;
+import net.minecraft.resources.Identifier;
 import net.minecraft.world.BossEvent;
 import net.neoforged.neoforge.client.event.CustomizeGuiOverlayEvent;
 
 import java.util.HashMap;
 import java.util.Map;
 
+/**
+ * PORTING NOTE: `net.minecraft.client.gui.GuiGraphics` renamed to `GuiGraphicsExtractor` as part of the broader
+ * "render state extraction" overhaul (see PORTING_NOTES.md) - `CustomizeGuiOverlayEvent#getGuiGraphics()` (verified
+ * via javap against the NeoForge 26.1.2.95 universal jar, no sources jar was available) now returns
+ * `GuiGraphicsExtractor` directly, confirming this event itself was updated for the new architecture too.
+ * `drawString(...)` -> `text(...)`; `blit(Identifier, x, y, u, v, w, h, texW, texH)` -> `blit(RenderPipeline,
+ * Identifier, x, y, u, v, w, h, texW, texH)` (u/v now floats, and a `RenderPipeline` - `RenderPipelines.GUI_TEXTURED`
+ * for a plain textured quad - is now required as the first argument; see `ContainerScreen.java` in the vanilla
+ * source tree for a concrete example of the new `blit` call shape). The old `RenderSystem.setShaderColor`/
+ * `setShaderTexture` calls before each blit are no longer meaningful/necessary in the new deferred extraction model
+ * (the blit call itself carries the texture reference and is resolved later during actual GPU submission) and have
+ * been removed.
+ */
 public class CustomBossBar {
-    public static Map<ResourceLocation, CustomBossBar> customBossBars = new HashMap<>();
+    public static Map<Identifier, CustomBossBar> customBossBars = new HashMap<>();
     static {
         customBossBars.put(BuiltInRegistries.ENTITY_TYPE.getKey(EntityHandler.UMVUTHI.get()), new CustomBossBar(
                 MMCommon.resource("textures/gui/boss_bar/umvuthi_bar_base.png"),
@@ -32,8 +45,8 @@ public class CustomBossBar {
                 4, 8, 5, -5, -6, 256, 16, 25, ChatFormatting.RED));
     }
 
-    private final ResourceLocation baseTexture;
-    private final ResourceLocation overlayTexture;
+    private final Identifier baseTexture;
+    private final Identifier overlayTexture;
     private final boolean hasOverlay;
 
     private final int baseHeight;
@@ -48,7 +61,7 @@ public class CustomBossBar {
 
     private final ChatFormatting textColor;
 
-    public CustomBossBar(ResourceLocation baseTexture, ResourceLocation overlayTexture, int baseHeight, int baseTextureHeight, int baseOffsetY, int overlayOffsetX, int overlayOffsetY, int overlayWidth, int overlayHeight, int verticalIncrement, ChatFormatting textColor) {
+    public CustomBossBar(Identifier baseTexture, Identifier overlayTexture, int baseHeight, int baseTextureHeight, int baseOffsetY, int overlayOffsetX, int overlayOffsetY, int overlayWidth, int overlayHeight, int verticalIncrement, ChatFormatting textColor) {
         this.baseTexture = baseTexture;
         this.overlayTexture = overlayTexture;
         this.hasOverlay = overlayTexture != null;
@@ -63,11 +76,11 @@ public class CustomBossBar {
         this.textColor = textColor;
     }
 
-    public ResourceLocation getBaseTexture() {
+    public Identifier getBaseTexture() {
         return baseTexture;
     }
 
-    public ResourceLocation getOverlayTexture() {
+    public Identifier getOverlayTexture() {
         return overlayTexture;
     }
 
@@ -114,39 +127,36 @@ public class CustomBossBar {
     public void renderBossBar(CustomizeGuiOverlayEvent.BossEventProgress event) {
         int baseYOffset = getBaseOffsetY();
 
-        GuiGraphics guiGraphics = event.getGuiGraphics();
+        GuiGraphicsExtractor guiGraphics = event.getGuiGraphics();
         int y = event.getY();
         int i = Minecraft.getInstance().getWindow().getGuiScaledWidth();
         int j = y - 9;
         int k = i / 2 - 91;
-        Minecraft.getInstance().getProfiler().push("customBossBarBase");
+        net.minecraft.util.profiling.Profiler.get().push("customBossBarBase");
 
-        RenderSystem.setShaderColor(1.0F, 1.0F, 1.0F, 1.0F);
-        RenderSystem.setShaderTexture(0, getBaseTexture());
         drawBar(guiGraphics, event.getX() + 1, y + baseYOffset, event.getBossEvent());
         Component component = event.getBossEvent().getName().copy().withStyle(getTextColor());
-        Minecraft.getInstance().getProfiler().pop();
+        net.minecraft.util.profiling.Profiler.get().pop();
 
         int l = Minecraft.getInstance().font.width(component);
         int i1 = i / 2 - l / 2;
         int j1 = j;
-        guiGraphics.drawString(Minecraft.getInstance().font, component, i1, j1, 16777215);
+        guiGraphics.text(Minecraft.getInstance().font, component, i1, j1, 16777215);
 
         if (hasOverlay()) {
-            Minecraft.getInstance().getProfiler().push("customBossBarOverlay");
-            RenderSystem.setShaderTexture(0, getOverlayTexture());
-            event.getGuiGraphics().blit(getOverlayTexture(), event.getX() + 1 + getOverlayOffsetX(), y + getOverlayOffsetY() + baseYOffset, 0, 0, getOverlayWidth(), getOverlayHeight(), getOverlayWidth(), getOverlayHeight());
-            Minecraft.getInstance().getProfiler().pop();
+            net.minecraft.util.profiling.Profiler.get().push("customBossBarOverlay");
+            event.getGuiGraphics().blit(RenderPipelines.GUI_TEXTURED, getOverlayTexture(), event.getX() + 1 + getOverlayOffsetX(), y + getOverlayOffsetY() + baseYOffset, 0.0F, 0.0F, getOverlayWidth(), getOverlayHeight(), getOverlayWidth(), getOverlayHeight());
+            net.minecraft.util.profiling.Profiler.get().pop();
         }
 
         event.setIncrement(getVerticalIncrement());
     }
 
-    private void drawBar(GuiGraphics guiGraphics, int x, int y, BossEvent event) {
-        guiGraphics.blit(getBaseTexture(), x, y, 0, 0, 182, getBaseHeight(), 256, getBaseTextureHeight());
+    private void drawBar(GuiGraphicsExtractor guiGraphics, int x, int y, BossEvent event) {
+        guiGraphics.blit(RenderPipelines.GUI_TEXTURED, getBaseTexture(), x, y, 0.0F, 0.0F, 182, getBaseHeight(), 256, getBaseTextureHeight());
         int i = (int)(event.getProgress() * 183.0F);
         if (i > 0) {
-            guiGraphics.blit(getBaseTexture(), x, y, 0, getBaseHeight(), i, getBaseHeight(), 256, getBaseTextureHeight());
+            guiGraphics.blit(RenderPipelines.GUI_TEXTURED, getBaseTexture(), x, y, 0.0F, (float) getBaseHeight(), i, getBaseHeight(), 256, getBaseTextureHeight());
         }
     }
 }

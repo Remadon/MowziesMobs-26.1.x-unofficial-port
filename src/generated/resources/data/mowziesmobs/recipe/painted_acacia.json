@@ -2,27 +2,13 @@
   "type": "minecraft:crafting_shapeless",
   "category": "building",
   "ingredients": [
-    {
-      "item": "minecraft:acacia_planks"
-    },
-    {
-      "item": "minecraft:acacia_planks"
-    },
-    {
-      "item": "minecraft:acacia_planks"
-    },
-    {
-      "item": "minecraft:acacia_planks"
-    },
-    {
-      "item": "minecraft:yellow_dye"
-    },
-    {
-      "item": "minecraft:white_dye"
-    },
-    {
-      "item": "minecraft:cyan_dye"
-    }
+    "minecraft:acacia_planks",
+    "minecraft:acacia_planks",
+    "minecraft:acacia_planks",
+    "minecraft:acacia_planks",
+    "minecraft:yellow_dye",
+    "minecraft:white_dye",
+    "minecraft:cyan_dye"
   ],
   "result": {
     "count": 4,

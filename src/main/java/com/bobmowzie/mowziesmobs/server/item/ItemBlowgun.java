@@ -7,15 +7,17 @@ import net.minecraft.sounds.SoundSource;
 import net.minecraft.stats.Stats;
 import net.minecraft.world.entity.LivingEntity;
 import net.minecraft.world.entity.player.Player;
-import net.minecraft.world.entity.projectile.AbstractArrow;
+import net.minecraft.world.entity.projectile.arrow.AbstractArrow;
 import net.minecraft.world.entity.projectile.Projectile;
 import net.minecraft.world.item.*;
+import net.minecraft.world.item.component.TooltipDisplay;
 import net.minecraft.world.level.Level;
 import net.neoforged.neoforge.event.EventHooks;
 import org.jetbrains.annotations.NotNull;
 
 import javax.annotation.Nullable;
 import java.util.List;
+import java.util.function.Consumer;
 import java.util.function.Predicate;
 
 public class ItemBlowgun extends BowItem {
@@ -25,8 +27,11 @@ public class ItemBlowgun extends BowItem {
         super(properties);
     }
 
+    // PORTING NOTE (1.21.1 -> 26.1.2): Item#releaseUsing/BowItem#releaseUsing now returns boolean instead of void
+    // (matches vanilla BowItem#releaseUsing exactly) - added explicit true/false returns mirroring vanilla's own
+    // control flow (false = the release was a no-op, true = something actually fired).
     @Override // Mostly a copy of the parent class
-    public void releaseUsing(@NotNull ItemStack stack, @NotNull Level level, @NotNull LivingEntity entityLiving, int timeLeft) {
+    public boolean releaseUsing(@NotNull ItemStack stack, @NotNull Level level, @NotNull LivingEntity entityLiving, int timeLeft) {
         if (entityLiving instanceof Player player) {
             ItemStack itemstack = player.getProjectile(stack);
 
@@ -35,7 +40,7 @@ public class ItemBlowgun extends BowItem {
                 duration = EventHooks.onArrowLoose(stack, level, player, duration, !itemstack.isEmpty());
 
                 if (duration < 0) {
-                    return;
+                    return false;
                 }
 
                 float power = ItemBlowgun.getPowerForTime(duration);
@@ -50,9 +55,11 @@ public class ItemBlowgun extends BowItem {
                     // Custom sound
                     level.playSound(null, player.getX(), player.getY(), player.getZ(), MMSounds.ENTITY_UMVUTHANA_BLOWDART.get(), SoundSource.PLAYERS, 1.0F, 1.0F / (player.getRandom().nextFloat() * 0.4F + 1.2F) + power * 0.5F);
                     player.awardStat(Stats.ITEM_USED.get(this));
+                    return true;
                 }
             }
         }
+        return false;
     }
 
     public static float getPowerForTime(int charge) {
@@ -72,11 +79,11 @@ public class ItemBlowgun extends BowItem {
     }
 
     @Override
-    public void appendHoverText(@NotNull ItemStack stack, @NotNull TooltipContext context, @NotNull List<Component> tooltip, @NotNull TooltipFlag flagIn) {
-        super.appendHoverText(stack, context, tooltip, flagIn);
-        tooltip.add(Component.translatable(getDescriptionId() + ".text.0").setStyle(ItemHandler.TOOLTIP_STYLE));
-        tooltip.add(Component.translatable(getDescriptionId() + ".text.1").setStyle(ItemHandler.TOOLTIP_STYLE));
-        tooltip.add(Component.translatable(getDescriptionId() + ".text.2").setStyle(ItemHandler.TOOLTIP_STYLE));
+    public void appendHoverText(@NotNull ItemStack stack, @NotNull TooltipContext context, @NotNull TooltipDisplay display, @NotNull Consumer<Component> tooltip, @NotNull TooltipFlag flagIn) {
+        super.appendHoverText(stack, context, display, tooltip, flagIn);
+        tooltip.accept(Component.translatable(getDescriptionId() + ".text.0").setStyle(ItemHandler.TOOLTIP_STYLE));
+        tooltip.accept(Component.translatable(getDescriptionId() + ".text.1").setStyle(ItemHandler.TOOLTIP_STYLE));
+        tooltip.accept(Component.translatable(getDescriptionId() + ".text.2").setStyle(ItemHandler.TOOLTIP_STYLE));
     }
 
     @Override

@@ -2,18 +2,17 @@ package com.bobmowzie.mowziesmobs.server.capability;
 
 import com.google.common.collect.Maps;
 import net.minecraft.core.Holder;
-import net.minecraft.core.HolderLookup;
-import net.minecraft.nbt.CompoundTag;
-import net.minecraft.nbt.ListTag;
 import net.minecraft.world.effect.MobEffect;
 import net.minecraft.world.effect.MobEffectInstance;
 import net.minecraft.world.entity.LivingEntity;
-import net.neoforged.neoforge.common.util.INBTSerializable;
-import org.jetbrains.annotations.NotNull;
+import net.minecraft.world.level.storage.ValueInput;
+import net.minecraft.world.level.storage.ValueOutput;
+import net.neoforged.neoforge.common.util.ValueIOSerializable;
 
+import java.util.List;
 import java.util.Map;
 
-public class LivingData implements INBTSerializable<CompoundTag> {
+public class LivingData implements ValueIOSerializable {
     float lastDamage = 0;
     boolean hasSunblock;
     private final Map<Holder<MobEffect>, MobEffectInstance> eclipsedEffects = Maps.newHashMap();
@@ -52,32 +51,18 @@ public class LivingData implements INBTSerializable<CompoundTag> {
     }
 
     @Override
-    public CompoundTag serializeNBT(@NotNull HolderLookup.Provider lookup) {
-        CompoundTag compound = new CompoundTag();
+    public void serialize(ValueOutput output) {
         if (!this.eclipsedEffects.isEmpty()) {
-            ListTag listtag = new ListTag();
-
-            for (MobEffectInstance mobeffectinstance : this.eclipsedEffects.values()) {
-                listtag.add(mobeffectinstance.save());
-            }
-
-            compound.put("eclipsed_effects", listtag);
+            output.store("eclipsed_effects", MobEffectInstance.CODEC.listOf(), List.copyOf(this.eclipsedEffects.values()));
         }
-        return compound;
     }
 
     @Override
-    public void deserializeNBT(@NotNull HolderLookup.Provider lookup, @NotNull CompoundTag compound) {
-        if (compound.contains("eclipsed_effects", 9)) {
-            ListTag listtag = compound.getList("eclipsed_effects", 10);
+    public void deserialize(ValueInput input) {
+        List<MobEffectInstance> effects = input.read("eclipsed_effects", MobEffectInstance.CODEC.listOf()).orElse(List.of());
 
-            for (int i = 0; i < listtag.size(); i++) {
-                CompoundTag compoundtag = listtag.getCompound(i);
-                MobEffectInstance mobeffectinstance = MobEffectInstance.load(compoundtag);
-                if (mobeffectinstance != null) {
-                    this.eclipsedEffects.put(mobeffectinstance.getEffect(), mobeffectinstance);
-                }
-            }
+        for (MobEffectInstance mobeffectinstance : effects) {
+            this.eclipsedEffects.put(mobeffectinstance.getEffect(), mobeffectinstance);
         }
     }
 }

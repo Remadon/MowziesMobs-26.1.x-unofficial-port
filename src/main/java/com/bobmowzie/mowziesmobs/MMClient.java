@@ -1,15 +1,10 @@
 package com.bobmowzie.mowziesmobs;
 
 import com.bobmowzie.mowziesmobs.client.ClientLayerRegistry;
-import com.bobmowzie.mowziesmobs.client.MMModels;
 import com.bobmowzie.mowziesmobs.client.render.entity.FrozenRenderHandler;
 import com.bobmowzie.mowziesmobs.server.ability.AbilityClientEventHandler;
 import com.bobmowzie.mowziesmobs.server.config.ConfigHandler;
 import com.bobmowzie.mowziesmobs.server.item.*;
-import net.minecraft.client.renderer.item.ItemProperties;
-import net.minecraft.client.renderer.item.ItemPropertyFunction;
-import net.minecraft.resources.ResourceLocation;
-import net.minecraft.world.item.Items;
 import net.neoforged.api.distmarker.Dist;
 import net.neoforged.bus.api.IEventBus;
 import net.neoforged.fml.ModContainer;
@@ -22,7 +17,8 @@ import net.neoforged.neoforge.common.NeoForge;
 @Mod(value = MMCommon.MODID, dist = Dist.CLIENT)
 public class MMClient {
     public MMClient(IEventBus modBus, ModContainer container) {
-        modBus.register(MMModels.class);
+        // MMModels.class registration removed - it no longer has any @SubscribeEvent methods (see FIXME in
+        // client/MMModels.java: its old model-swapping technique has no equivalent in 26.1.2's item model API).
         modBus.addListener(ClientLayerRegistry::onAddLayers);
         modBus.addListener(this::init);
         modBus.addListener(this::registerClientExtensions);
@@ -34,8 +30,22 @@ public class MMClient {
     }
 
     private void init(FMLLoadCompleteEvent event) {
-        ItemPropertyFunction pulling = ItemProperties.getProperty(Items.BOW.getDefaultInstance(), ResourceLocation.withDefaultNamespace("pulling"));
-        ItemProperties.register(ItemHandler.BLOWGUN.get().asItem(), ResourceLocation.withDefaultNamespace("pulling"), pulling);
+        /* FIXME 1.21 -> 26.1.2 port: UNRESOLVED, flagged for follow-up.
+            net.minecraft.client.renderer.item.ItemProperties / ItemPropertyFunction (the Java API used to reuse
+            vanilla's bow "pulling" animation-frame predicate for the Blowgun item) no longer exist at all. Item
+            model "predicate overrides" (models/item/*.json "overrides": [{"predicate": {"pulling": ...}}]) were
+            replaced project-wide in vanilla by a data-driven item model system
+            (net.minecraft.client.renderer.item.ItemModel / assets/<ns>/items/<name>.json, e.g.
+            ItemModelUtils.conditional(ItemModelUtils.isUsingItem(), ItemModelUtils.rangeSelect(new UseDuration(false), ...), ...)
+            - see ItemModelGenerators#generateBow(Item) in the real decompiled 26.1.2 source for the vanilla bow's
+            equivalent). There is no Java call to port this to; the fix belongs in
+            src/main/resources/assets/mowziesmobs/models/item/blowgun.json (currently still using the old
+            "overrides"/"predicate" format) plus a new assets/mowziesmobs/items/blowgun.json using
+            "minecraft:range_dispatch" on "minecraft:use_duration" wrapped in "minecraft:condition" on
+            "minecraft:using_item", mirroring vanilla's bow. That's a resource/data-file migration (likely needed
+            for other item models in the mod too, not just this one) outside this agent's Java-focused scope -
+            flagging for a follow-up pass rather than guessing at a partial fix here.
+        */
     }
 
     private void registerClientExtensions(RegisterClientExtensionsEvent event) {

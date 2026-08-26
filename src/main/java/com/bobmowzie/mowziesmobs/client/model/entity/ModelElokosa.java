@@ -5,14 +5,21 @@ import com.bobmowzie.mowziesmobs.client.model.tools.geckolib.MowzieGeoBone;
 import com.bobmowzie.mowziesmobs.client.model.tools.geckolib.MowzieGeoModel;
 import com.bobmowzie.mowziesmobs.server.entity.elokosa.EntityElokosa;
 import com.bobmowzie.mowziesmobs.server.entity.elokosa.EntityElokosaHowler;
+import net.minecraft.client.renderer.entity.state.LivingEntityRenderState;
 import net.minecraft.core.Direction;
-import net.minecraft.resources.ResourceLocation;
+import net.minecraft.resources.Identifier;
 import net.minecraft.util.Mth;
-import software.bernie.geckolib.animation.AnimationState;
-import software.bernie.geckolib.constant.DataTickets;
-import software.bernie.geckolib.model.data.EntityModelData;
+import com.geckolib.animation.state.AnimationTest;
+import com.geckolib.constant.DataTickets;
+import com.geckolib.constant.dataticket.DataTicket;
+import com.geckolib.renderer.base.GeoRenderState;
 
 public class ModelElokosa extends MowzieGeoModel<EntityElokosa> {
+    // PORTING NOTE: getTextureResource(GeoRenderState) no longer receives the live animatable, so whether this is
+    // an EntityElokosaHowler is captured up front via addAdditionalStateData and read back here - see ModelUmvuthana
+    // for the same pattern.
+    private static final DataTicket<Boolean> IS_ELITE = DataTickets.create("mowziesmobs_elokosa_is_elite", Boolean.class);
+
     public MowzieGeoBone[] tailOriginal;
     public MowzieGeoBone[] tailDynamic;
 
@@ -21,25 +28,28 @@ public class ModelElokosa extends MowzieGeoModel<EntityElokosa> {
     }
 
     @Override
-    public ResourceLocation getModelResource(EntityElokosa elokosa) {
-        return MMCommon.resource("geo/elokosa.geo.json");
+    public void addAdditionalStateData(EntityElokosa animatable, Object relatedObject, GeoRenderState renderState) {
+        renderState.addGeckolibData(IS_ELITE, animatable instanceof EntityElokosaHowler);
     }
 
     @Override
-    public ResourceLocation getTextureResource(EntityElokosa elokosa) {
-        boolean isElite = elokosa instanceof EntityElokosaHowler;
+    public Identifier getModelResource(GeoRenderState renderState) {
+        return MMCommon.resource("elokosa");
+    }
+
+    @Override
+    public Identifier getTextureResource(GeoRenderState renderState) {
+        boolean isElite = Boolean.TRUE.equals(renderState.getGeckolibData(IS_ELITE));
         return MMCommon.resource("textures/entity/" + (isElite ? "elokosa_elite.png" : "elokosa.png"));
     }
 
     @Override
-    public ResourceLocation getAnimationResource(EntityElokosa elokosa) {
-        return MMCommon.resource("animations/elokosa.animation.json");
+    public Identifier getAnimationResource(EntityElokosa elokosa) {
+        return MMCommon.resource("elokosa");
     }
 
-    @Override
-    public void setCustomAnimations(EntityElokosa entity, long instanceId, AnimationState<EntityElokosa> animationState) {
-        super.setCustomAnimations(entity, instanceId, animationState);
-
+    // PORTING NOTE: no longer @Override - see MowzieGeoModel's class javadoc.
+    public void setCustomAnimations(EntityElokosa entity, long instanceId, AnimationTest<EntityElokosa> animationState) {
         boolean isElite = entity instanceof EntityElokosaHowler;
 
         MowzieGeoBone rootNight = getMowzieBone("root");
@@ -94,20 +104,20 @@ public class ModelElokosa extends MowzieGeoModel<EntityElokosa> {
             tailTuft.setHidden(false);
         }
 
-        EntityModelData entityData = animationState.getData(DataTickets.ENTITY_MODEL_DATA);
+        // PORTING NOTE: EntityModelData/DataTickets.ENTITY_MODEL_DATA removed in GeckoLib 5 - see ModelSculptor.
+        float entityDataHeadPitch = animationState.getData(DataTickets.ENTITY_PITCH);
 
         if (rootNight != null && !entity.onGround() && entity.getClingDirection() == Direction.DOWN && entity.getActiveAbilityType() == EntityElokosa.LEAP_ABILITY) {
-            rootNight.setRotX(entityData.headPitch() * Mth.DEG_TO_RAD * 0.2f);
+            rootNight.setRotX(entityDataHeadPitch * Mth.DEG_TO_RAD * 0.2f);
         }
-        float frame = entity.frame + animationState.getPartialTick();
+        float frame = entity.frame + animationState.renderState().getPartialTick();
         float ticks = entity.tickCount;
 
         MowzieGeoBone headLook = getMowzieBone("headLook");
         MowzieGeoBone headLookDay = getMowzieBone("head_day");
 
-        EntityModelData data = animationState.getData(DataTickets.ENTITY_MODEL_DATA);
-        float headYaw = Mth.wrapDegrees(data.netHeadYaw());
-        float headPitch = Mth.wrapDegrees(data.headPitch());
+        float headYaw = Mth.wrapDegrees(animationState.getData(DataTickets.ENTITY_YAW) - animationState.getData(DataTickets.ENTITY_BODY_YAW));
+        float headPitch = Mth.wrapDegrees(animationState.getData(DataTickets.ENTITY_PITCH));
         if (headLook != null) {
             headLook.addRotX(headPitch * Math.PI / 180F);
             headLook.addRotY(headYaw * Math.PI / 180F);
@@ -131,8 +141,14 @@ public class ModelElokosa extends MowzieGeoModel<EntityElokosa> {
         rightHandDay.addRotY(-0.8 * wallClingController * upperClingBlockMissing);
 
         float animSpeed = 0.65f;
-        float limbSwing = animationState.getLimbSwing();
-        float limbSwingAmount = animationState.getLimbSwingAmount();
+        // PORTING NOTE: AnimationState#getLimbSwing()/getLimbSwingAmount() removed in GeckoLib 5 - see
+        // ModelUmvuthana for the same substitution (vanilla LivingEntityRenderState fields).
+        float limbSwing = 0f;
+        float limbSwingAmount = 0f;
+        if (animationState.renderState() instanceof LivingEntityRenderState livingEntityRenderState) {
+            limbSwing = livingEntityRenderState.walkAnimationPos;
+            limbSwingAmount = livingEntityRenderState.walkAnimationSpeed;
+        }
 
 //        limbSwing = 0.5f * (entity.tickCount + animationState.getPartialTick());
 //        limbSwingAmount = 1f;
@@ -141,10 +157,10 @@ public class ModelElokosa extends MowzieGeoModel<EntityElokosa> {
 ////        moveVec = moveVec.normalize();
 ////        moveVec = moveVec.yRot(angle);
 
-        double forward = Mth.lerp(animationState.getPartialTick(), entity.prevMoveDirForward, entity.moveDirForward);
-        double backward = Mth.lerp(animationState.getPartialTick(), entity.prevMoveDirBackward, entity.moveDirBackward);
-        double left = Mth.lerp(animationState.getPartialTick(), entity.prevMoveDirLeft, entity.moveDirLeft);
-        double right = Mth.lerp(animationState.getPartialTick(), entity.prevMoveDirRight, entity.moveDirRight);
+        double forward = Mth.lerp(animationState.renderState().getPartialTick(), entity.prevMoveDirForward, entity.moveDirForward);
+        double backward = Mth.lerp(animationState.renderState().getPartialTick(), entity.prevMoveDirBackward, entity.moveDirBackward);
+        double left = Mth.lerp(animationState.renderState().getPartialTick(), entity.prevMoveDirLeft, entity.moveDirLeft);
+        double right = Mth.lerp(animationState.renderState().getPartialTick(), entity.prevMoveDirRight, entity.moveDirRight);
         limbSwingAmount *= 2;
         limbSwingAmount = Math.min(0.7f, limbSwingAmount);
         double locomotionAnimController = getControllerValue("locomotionAnimController");

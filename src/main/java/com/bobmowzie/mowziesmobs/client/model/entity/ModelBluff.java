@@ -4,11 +4,11 @@ import com.bobmowzie.mowziesmobs.MMCommon;
 import com.bobmowzie.mowziesmobs.client.model.tools.geckolib.MowzieGeoBone;
 import com.bobmowzie.mowziesmobs.client.model.tools.geckolib.MowzieGeoModel;
 import com.bobmowzie.mowziesmobs.server.entity.bluff.EntityBluff;
-import net.minecraft.resources.ResourceLocation;
+import com.geckolib.animation.state.AnimationTest;
+import com.geckolib.constant.DataTickets;
+import com.geckolib.renderer.base.GeoRenderState;
+import net.minecraft.resources.Identifier;
 import net.minecraft.util.Mth;
-import software.bernie.geckolib.animation.AnimationState;
-import software.bernie.geckolib.constant.DataTickets;
-import software.bernie.geckolib.model.data.EntityModelData;
 
 public class ModelBluff extends MowzieGeoModel<EntityBluff> {
     public ModelBluff() {
@@ -16,25 +16,25 @@ public class ModelBluff extends MowzieGeoModel<EntityBluff> {
     }
 
     @Override
-    public ResourceLocation getModelResource(EntityBluff object) {
-        return MMCommon.resource("geo/bluff.geo.json");
+    public Identifier getModelResource(GeoRenderState renderState) {
+        return MMCommon.resource("bluff");
     }
 
     @Override
-    public ResourceLocation getTextureResource(EntityBluff object) {
+    public Identifier getTextureResource(GeoRenderState renderState) {
         return MMCommon.resource("textures/entity/bluff.png");
     }
 
     @Override
-    public ResourceLocation getAnimationResource(EntityBluff object) {
-        return MMCommon.resource("animations/bluff.animation.json");
+    public Identifier getAnimationResource(EntityBluff object) {
+        return MMCommon.resource("bluff");
     }
 
-
-    @Override
-    public void setCustomAnimations(EntityBluff entity, long instanceId, AnimationState<EntityBluff> animationState) {
-        super.setCustomAnimations(entity, instanceId, animationState);
-        float frame = entity.frame + animationState.getPartialTick();
+    // PORTING NOTE: no longer @Override - see MowzieGeoModel's class javadoc. Kept as a plain method (was called
+    // from a renderer's setCustomAnimations chain via super() before; that base no-op no longer exists either, so
+    // the super() call was removed).
+    public void setCustomAnimations(EntityBluff entity, long instanceId, AnimationTest<EntityBluff> animationState) {
+        float frame = entity.frame + animationState.renderState().getPartialTick();
         float ticks = entity.tickCount;
 
         MowzieGeoBone rotation1 = getMowzieBone("rotation1");
@@ -54,9 +54,10 @@ public class ModelBluff extends MowzieGeoModel<EntityBluff> {
         MowzieGeoBone head = getMowzieBone("head");
         MowzieGeoBone root = getMowzieBone("root");
 
-        EntityModelData data = animationState.getData(DataTickets.ENTITY_MODEL_DATA);
-        float headYaw = Mth.wrapDegrees(data.netHeadYaw());
-        float headPitch = Mth.wrapDegrees(data.headPitch());
+        // PORTING NOTE: EntityModelData/DataTickets.ENTITY_MODEL_DATA no longer exist in GeckoLib 5 - replaced with
+        // the closest available tickets (see ModelSculptor for the same substitution and its caveats).
+        float headYaw = Mth.wrapDegrees(animationState.getData(DataTickets.ENTITY_YAW) - animationState.getData(DataTickets.ENTITY_BODY_YAW));
+        float headPitch = Mth.wrapDegrees(animationState.getData(DataTickets.ENTITY_PITCH));
         head.addRotX(headPitch * (float) Math.PI / 180F);
         root.addRotY(headYaw * (float) Math.PI / 180F);
     }

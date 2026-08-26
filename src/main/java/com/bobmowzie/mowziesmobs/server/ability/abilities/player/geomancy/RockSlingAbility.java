@@ -15,7 +15,7 @@ import net.minecraft.world.level.block.state.BlockState;
 import net.minecraft.world.phys.BlockHitResult;
 import net.minecraft.world.phys.HitResult;
 import net.minecraft.world.phys.Vec3;
-import software.bernie.geckolib.animation.Animation;
+import com.geckolib.animation.object.LoopType;
 
 public class RockSlingAbility extends PlayerAbility {
     public static final double SPAWN_BOULDER_REACH = 5;
@@ -43,7 +43,7 @@ public class RockSlingAbility extends PlayerAbility {
 
         spawnBoulderPos = result.getBlockPos();
         this.spawnBoulderBlock = getUser().level().getBlockState(spawnBoulderPos);
-        playAnimation("rock_sling", Animation.LoopType.DEFAULT, true, true);
+        playAnimation("rock_sling", LoopType.DEFAULT, true, true);
 
         if (!getUser().level().isClientSide()) {
             for(int i = 0; i < 3; i++) {
@@ -51,7 +51,7 @@ public class RockSlingAbility extends PlayerAbility {
                 EntityRockSling boulder = new EntityRockSling(EntityHandler.ROCK_SLING.get(), getUser().level(), getUser(), spawnBoulderBlock, spawnBoulderPos, EntityGeomancyBase.GeomancyTier.values()[1]);
                 boulder.setPos(spawnPos.x() + 0.5F, spawnPos.y() + 2, spawnPos.z() + 0.5F);
                 boulder.setLaunchVec(getUser().getViewVector(1f).multiply(1f,0.9f,1f));
-                if (!getUser().level().isClientSide && boulder.checkCanSpawn()) {
+                if (!getUser().level().isClientSide() && boulder.checkCanSpawn()) {
                     getUser().level().addFreshEntity(boulder);
                 }
             }

@@ -6,7 +6,7 @@ import com.bobmowzie.mowziesmobs.server.ability.PlayerAbility;
 import net.minecraft.world.InteractionHand;
 import net.minecraft.world.entity.HumanoidArm;
 import net.minecraft.world.entity.player.Player;
-import software.bernie.geckolib.animation.Animation;
+import com.geckolib.animation.object.LoopType;
 
 public class SimplePlayerAnimationAbility extends PlayerAbility {
     private String animationName;
@@ -39,7 +39,7 @@ public class SimplePlayerAnimationAbility extends PlayerAbility {
         boolean usingSide = getActiveHand() == InteractionHand.MAIN_HAND;
         boolean mainSide = getUser().getMainArm() == HumanoidArm.RIGHT;
 
-        playAnimation(animationName, Animation.LoopType.DEFAULT, separateLeftAndRight1stPerson, separateLeftAndRight3rdPerson);
+        playAnimation(animationName, LoopType.DEFAULT, separateLeftAndRight1stPerson, separateLeftAndRight3rdPerson);
 
         // Held items
         if (lockHeldItemActiveHand) {

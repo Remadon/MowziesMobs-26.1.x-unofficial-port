@@ -2,6 +2,7 @@ package com.bobmowzie.mowziesmobs.server.entity.effects.geomancy;
 
 import com.bobmowzie.mowziesmobs.server.config.ConfigHandler;
 import net.minecraft.core.BlockPos;
+import net.minecraft.world.entity.Entity;
 import net.minecraft.world.entity.EntityType;
 import net.minecraft.world.entity.LivingEntity;
 import net.minecraft.world.level.Level;
@@ -9,11 +10,12 @@ import net.minecraft.world.level.block.state.BlockState;
 import net.minecraft.world.phys.AABB;
 import net.minecraft.world.phys.Vec3;
 import org.jetbrains.annotations.NotNull;
-import software.bernie.geckolib.animatable.GeoEntity;
-import software.bernie.geckolib.animation.AnimatableManager;
-import software.bernie.geckolib.animation.AnimationController;
-import software.bernie.geckolib.animation.PlayState;
-import software.bernie.geckolib.animation.RawAnimation;
+import org.jspecify.annotations.Nullable;
+import com.geckolib.animatable.GeoEntity;
+import com.geckolib.animatable.manager.AnimatableManager;
+import com.geckolib.animation.AnimationController;
+import com.geckolib.animation.object.PlayState;
+import com.geckolib.animation.RawAnimation;
 
 public class EntityRockSling extends EntityBoulderProjectile implements GeoEntity {
     private Vec3 launchVec;
@@ -29,8 +31,8 @@ public class EntityRockSling extends EntityBoulderProjectile implements GeoEntit
     }
 
     @Override
-    protected @NotNull AABB makeBoundingBox() {
-        return this.dimensions.makeBoundingBox(this.position());
+    protected @NotNull AABB makeBoundingBox(Vec3 position) {
+        return this.dimensions.makeBoundingBox(position);
     }
 
     @Override
@@ -60,7 +62,7 @@ public class EntityRockSling extends EntityBoulderProjectile implements GeoEntit
     }
 
     @Override
-    public boolean canBeCollidedWith() {
+    public boolean canBeCollidedWith(@Nullable Entity other) {
         return false;
     }
 
@@ -76,9 +78,9 @@ public class EntityRockSling extends EntityBoulderProjectile implements GeoEntit
 
     @Override
     public void registerControllers(AnimatableManager.ControllerRegistrar controllers) {
-        AnimationController<EntityRockSling> controller = new AnimationController<>(this, "controller", 0,
+        AnimationController<EntityRockSling> controller = new AnimationController<>("controller", 0,
                 event -> {
-                    event.getController()
+                    event.controller()
                             .setAnimation(ROLL_ANIM);
                     return PlayState.CONTINUE;
                 });

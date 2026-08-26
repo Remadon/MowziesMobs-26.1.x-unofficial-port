@@ -22,6 +22,8 @@ import net.minecraft.world.level.ClipContext;
 import net.minecraft.world.level.Level;
 import net.minecraft.world.level.block.Blocks;
 import net.minecraft.world.level.block.state.BlockState;
+import net.minecraft.world.level.storage.ValueInput;
+import net.minecraft.world.level.storage.ValueOutput;
 import net.minecraft.world.phys.BlockHitResult;
 import net.minecraft.world.phys.HitResult;
 import net.minecraft.world.phys.Vec3;
@@ -111,7 +113,7 @@ public class EntityFissure extends Projectile implements IGeomancyRumbler {
         }
         setPos(result.getLocation());
         if (this.level() instanceof ServerLevel) {
-            ((ServerLevel) this.level()).getChunkSource().broadcast(this, new ClientboundTeleportEntityPacket(this));
+            ((ServerLevel) this.level()).getChunkSource().sendToTrackingPlayers(this, ClientboundTeleportEntityPacket.teleport(this.getId(), net.minecraft.world.entity.PositionMoveRotation.of(this), java.util.Set.of(), this.onGround()));
         }
     }
 
@@ -133,16 +135,16 @@ public class EntityFissure extends Projectile implements IGeomancyRumbler {
         }
     }
 
-    public void addAdditionalSaveData(CompoundTag compound) {
-        super.addAdditionalSaveData(compound);
-        compound.putShort("despawnTimer", (short)this.despawnTimer);
-        compound.putBoolean("travelling", isTravelling());
+    public void addAdditionalSaveData(ValueOutput output) {
+        super.addAdditionalSaveData(output);
+        output.putShort("despawnTimer", (short)this.despawnTimer);
+        output.putBoolean("travelling", isTravelling());
     }
 
-    public void readAdditionalSaveData(CompoundTag compound) {
-        super.readAdditionalSaveData(compound);
-        this.despawnTimer = compound.getShort("despawnTimer");
-        setTravelling(compound.getBoolean("travelling"));
+    public void readAdditionalSaveData(ValueInput input) {
+        super.readAdditionalSaveData(input);
+        this.despawnTimer = input.getShortOr("despawnTimer", (short) 0);
+        setTravelling(input.getBooleanOr("travelling", false));
     }
 
     @Override

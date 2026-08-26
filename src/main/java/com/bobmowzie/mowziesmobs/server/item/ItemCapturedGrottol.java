@@ -2,13 +2,15 @@ package com.bobmowzie.mowziesmobs.server.item;
 
 import com.bobmowzie.mowziesmobs.server.entity.EntityHandler;
 import com.bobmowzie.mowziesmobs.server.entity.grottol.EntityGrottol;
+import com.mojang.logging.LogUtils;
 import net.minecraft.core.BlockPos;
 import net.minecraft.core.Direction;
 import net.minecraft.core.component.DataComponents;
 import net.minecraft.nbt.CompoundTag;
+import net.minecraft.util.ProblemReporter;
 import net.minecraft.world.InteractionHand;
 import net.minecraft.world.InteractionResult;
-import net.minecraft.world.entity.MobSpawnType;
+import net.minecraft.world.entity.EntitySpawnReason;
 import net.minecraft.world.entity.ai.control.LookControl;
 import net.minecraft.world.entity.player.Player;
 import net.minecraft.world.item.Item;
@@ -17,10 +19,16 @@ import net.minecraft.world.item.component.CustomData;
 import net.minecraft.world.item.context.UseOnContext;
 import net.minecraft.world.level.Level;
 import net.minecraft.world.level.ServerLevelAccessor;
+import net.minecraft.world.level.storage.TagValueInput;
+import net.minecraft.world.level.storage.TagValueOutput;
 
 import java.util.UUID;
 
 public class ItemCapturedGrottol extends Item {
+    // ProblemReporter.ScopedCollector wants an org.slf4j.Logger (matches vanilla's own LogUtils.getLogger() usage
+    // in Entity#restoreFrom) - NOT MMCommon.LOGGER, which is a log4j Logger and isn't assignment-compatible.
+    private static final org.slf4j.Logger LOGGER = LogUtils.getLogger();
+
     public ItemCapturedGrottol(Item.Properties properties) {
         super(properties);
     }
@@ -45,15 +53,15 @@ public class ItemCapturedGrottol extends Item {
         if (!player.mayUseItemAt(location, facing, stack)) {
             return InteractionResult.FAIL;
         }
-        if (!world.isClientSide) {
+        if (!world.isClientSide()) {
             EntityGrottol grottol = new EntityGrottol(EntityHandler.GROTTOL.get(), world);
             CustomData data = stack.get(DataComponents.CUSTOM_DATA);
             if (data != null) {
-                setData(grottol, data.copyTag().getCompound("EntityTag"));
+                setData(grottol, data.copyTag().getCompoundOrEmpty("EntityTag"));
             }
-            grottol.moveTo(location, 0, 0);
+            grottol.snapTo(location, 0, 0);
             lookAtPlayer(grottol, player);
-            grottol.finalizeSpawn((ServerLevelAccessor) world, world.getCurrentDifficultyAt(location), MobSpawnType.MOB_SUMMONED, null);
+            grottol.finalizeSpawn((ServerLevelAccessor) world, ((ServerLevelAccessor) world).getCurrentDifficultyAt(location), EntitySpawnReason.MOB_SUMMONED, null);
             world.addFreshEntity(grottol);
             if (!player.getAbilities().instabuild) {
                 stack.shrink(1);
@@ -62,11 +70,21 @@ public class ItemCapturedGrottol extends Item {
         return InteractionResult.SUCCESS;
     }
 
+    // PORTING NOTE (1.21.1 -> 26.1.2): Entity#serializeNBT(RegistryAccess)/#deserializeNBT(RegistryAccess,
+    // CompoundTag) no longer exist (confirmed: grepped IEntityExtension and the whole vanilla Entity.java for any
+    // surviving "NBT" convenience method - only the split ValueInput/ValueOutput-based save/load pipeline remains).
+    // Replaced with vanilla's own TagValueOutput/TagValueInput round-trip, mirroring the real
+    // Entity#restoreFrom(Entity) pattern (see vanilla Entity.java) which does the exact same
+    // save-to-CompoundTag-then-reload dance this method needs.
     private void setData(EntityGrottol grottol, CompoundTag compound) {
-        CompoundTag data = grottol.serializeNBT(grottol.registryAccess());
         UUID id = grottol.getUUID();
-        data.merge(compound);
-        grottol.deserializeNBT(grottol.registryAccess(), data);
+        try (ProblemReporter.ScopedCollector reporter = new ProblemReporter.ScopedCollector(grottol.problemPath(), LOGGER)) {
+            TagValueOutput output = TagValueOutput.createWithContext(reporter, grottol.registryAccess());
+            grottol.saveWithoutId(output);
+            CompoundTag data = output.buildResult();
+            data.merge(compound);
+            grottol.load(TagValueInput.create(reporter, grottol.registryAccess(), data));
+        }
         grottol.setUUID(id);
     }
 
@@ -87,7 +105,13 @@ public class ItemCapturedGrottol extends Item {
     public ItemStack create(EntityGrottol grottol) {
         ItemStack stack = new ItemStack(this);
         // FIXME 1.21 :: will need to use item component in the future
-        stack.getOrDefault(DataComponents.CUSTOM_DATA, CustomData.EMPTY).update(tag -> tag.put("EntityTag", grottol.serializeNBT(grottol.registryAccess())));
+        CompoundTag entityData;
+        try (ProblemReporter.ScopedCollector reporter = new ProblemReporter.ScopedCollector(grottol.problemPath(), LOGGER)) {
+            TagValueOutput output = TagValueOutput.createWithContext(reporter, grottol.registryAccess());
+            grottol.saveWithoutId(output);
+            entityData = output.buildResult();
+        }
+        stack.getOrDefault(DataComponents.CUSTOM_DATA, CustomData.EMPTY).update(tag -> tag.put("EntityTag", entityData));
         return stack;
     }
 }

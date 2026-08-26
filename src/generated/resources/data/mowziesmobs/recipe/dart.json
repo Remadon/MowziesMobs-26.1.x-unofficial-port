@@ -2,15 +2,9 @@
   "type": "minecraft:crafting_shaped",
   "category": "equipment",
   "key": {
-    "E": {
-      "tag": "c:feathers"
-    },
-    "F": {
-      "item": "mowziesmobs:naga_fang"
-    },
-    "S": {
-      "tag": "c:rods/wooden"
-    }
+    "E": "#c:feathers",
+    "F": "mowziesmobs:naga_fang",
+    "S": "#c:rods/wooden"
   },
   "pattern": [
     "F",

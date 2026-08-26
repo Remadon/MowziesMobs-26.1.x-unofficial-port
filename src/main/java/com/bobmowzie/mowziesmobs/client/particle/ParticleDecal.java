@@ -10,10 +10,12 @@ import net.minecraft.client.Camera;
 import net.minecraft.client.multiplayer.ClientLevel;
 import net.minecraft.client.particle.Particle;
 import net.minecraft.client.particle.ParticleProvider;
+import net.minecraft.client.particle.ParticleRenderType;
 import net.minecraft.client.particle.SpriteSet;
 import net.minecraft.core.BlockPos;
 import net.minecraft.core.Holder;
 import net.minecraft.core.particles.ParticleType;
+import net.minecraft.util.RandomSource;
 import net.minecraft.world.level.Level;
 import net.minecraft.world.level.LevelReader;
 import net.minecraft.world.level.block.RenderShape;
@@ -26,6 +28,19 @@ import net.minecraft.world.phys.shapes.VoxelShape;
 import java.util.Arrays;
 import java.util.OptionalDouble;
 
+// ARCHITECTURAL LIMITATION (see final report): a decal emits one arbitrary quad per underlying block position
+// it projects onto (an AABB region can cover several blocks), with per-vertex coordinates computed from each
+// block's collision shape. The new particle rendering pipeline (QuadParticleRenderState#add(), reached via
+// SingleQuadParticle#extract()) only accepts "world position + rotation quaternion + one uniform scale" per
+// call - i.e. exactly one rotated *square* per particle - and provides no raw VertexConsumer access during
+// extraction, so this can't be expressed at all. Reproducing this particle requires a custom
+// net.minecraft.client.particle.ParticleGroup (registered via NeoForge's RegisterParticleGroupsEvent) with its
+// own render-state/renderer that can write an arbitrary number of arbitrary quads into a VertexConsumer, the
+// way this class's render() method used to. That is out of scope for this file (new infrastructure, likely
+// alongside MMRenderType under client/render, which is out of scope for this pass) so getGroup() below returns
+// NO_RENDER: the particle still ticks, it just doesn't draw anything until that custom renderer exists. The
+// old render() logic is kept below (renamed off @Override, with the renamed Camera API updated) so it's ready
+// to be reconnected once a custom render pipeline exists.
 public class ParticleDecal extends AdvancedParticleBase {
     protected int spriteSize = 8;
     protected int bufferSize = 32;
@@ -47,7 +62,9 @@ public class ParticleDecal extends AdvancedParticleBase {
         return Arrays.stream(v).max();
     }
 
-    @Override
+    // NB: not an @Override anymore - Particle#render(VertexConsumer, Camera, float) no longer exists. See the
+    // class-level comment above for why this can't currently be reconnected to the new extract()-based
+    // pipeline, and what would be needed to do so.
     public void render(VertexConsumer buffer, Camera renderInfo, float partialTicks) {
         alpha = prevAlpha + (alpha - prevAlpha) * partialTicks;
         if (alpha < 0.01) alpha = 0.01f;
@@ -79,7 +96,7 @@ public class ParticleDecal extends AdvancedParticleBase {
         float u1 = this.getU1();
         float v0 = this.getV0();
         float v1 = this.getV1();
-        int lightColor = this.getLightColor(partialTicks);
+        int lightColor = this.getLightCoords(partialTicks);
 
         float spriteScale = (float) spriteSize / (float) bufferSize;
         Vec3 corner0 = new Vec3(-particleScale/2, 0, -particleScale/2).yRot(decalRot);
@@ -150,9 +167,16 @@ public class ParticleDecal extends AdvancedParticleBase {
     }
 
     private static void decalVertex(VertexConsumer buffer, Camera renderInfo, float alpha, float x, float y, float z, float u, float v, float r, float g, float b, int lightColor) {
-        Vec3 vector3d = renderInfo.getPosition();
+        Vec3 vector3d = renderInfo.position();
 //        Vector3d = new Vec3(0, 1, 0);
         buffer.addVertex((float) (x - vector3d.x()), (float) (y - vector3d.y()), (float) (z - vector3d.z())).setUv(u, v).setColor(r, g, b, alpha).setLight(lightColor);
+    }
+
+    // See class-level comment: decal geometry can't be represented by the new single-quad extraction API, so
+    // this intentionally opts out of drawing (NO_RENDER) rather than silently drawing one incorrect quad.
+    @Override
+    public ParticleRenderType getGroup() {
+        return ParticleRenderType.NO_RENDER;
     }
 
     public static class Provider implements ParticleProvider<DecalParticleType> {
@@ -163,7 +187,7 @@ public class ParticleDecal extends AdvancedParticleBase {
         }
 
         @Override
-        public Particle createParticle(DecalParticleType typeIn, ClientLevel worldIn, double x, double y, double z, double xSpeed, double ySpeed, double zSpeed) {
+        public Particle createParticle(DecalParticleType typeIn, ClientLevel worldIn, double x, double y, double z, double xSpeed, double ySpeed, double zSpeed, RandomSource random) {
             ParticleDecal particle = new ParticleDecal(worldIn, x, y, z, xSpeed, ySpeed, zSpeed, typeIn.rotation(), typeIn.scale(), typeIn.red(), typeIn.green(), typeIn.blue(), typeIn.alpha(), typeIn.airDrag(), typeIn.duration(), typeIn.emissive(), spriteSet, typeIn.spriteSize(), typeIn.bufferSize(), typeIn.components());
             particle.setColor(typeIn.red(), typeIn.green(), typeIn.blue());
             return particle;

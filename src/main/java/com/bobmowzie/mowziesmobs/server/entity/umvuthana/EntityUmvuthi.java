@@ -42,6 +42,7 @@ import net.minecraft.core.BlockPos;
 import net.minecraft.core.particles.ParticleTypes;
 import net.minecraft.core.registries.BuiltInRegistries;
 import net.minecraft.nbt.CompoundTag;
+import net.minecraft.nbt.IntArrayTag;
 import net.minecraft.nbt.ListTag;
 import net.minecraft.nbt.NbtUtils;
 import net.minecraft.nbt.Tag;
@@ -51,7 +52,7 @@ import net.minecraft.network.syncher.EntityDataAccessor;
 import net.minecraft.network.syncher.EntityDataSerializers;
 import net.minecraft.network.syncher.SynchedEntityData;
 import net.minecraft.resources.ResourceKey;
-import net.minecraft.resources.ResourceLocation;
+import net.minecraft.resources.Identifier;
 import net.minecraft.server.level.ServerPlayer;
 import net.minecraft.server.players.OldUsersConverter;
 import net.minecraft.sounds.SoundEvent;
@@ -70,11 +71,11 @@ import net.minecraft.world.entity.ai.goal.LookAtPlayerGoal;
 import net.minecraft.world.entity.ai.goal.RandomLookAroundGoal;
 import net.minecraft.world.entity.ai.goal.target.NearestAttackableTargetGoal;
 import net.minecraft.world.entity.ai.targeting.TargetingConditions;
-import net.minecraft.world.entity.animal.IronGolem;
-import net.minecraft.world.entity.monster.AbstractSkeleton;
+import net.minecraft.world.entity.animal.golem.IronGolem;
+import net.minecraft.world.entity.monster.skeleton.AbstractSkeleton;
 import net.minecraft.world.entity.monster.Enemy;
-import net.minecraft.world.entity.monster.Zombie;
-import net.minecraft.world.entity.monster.ZombifiedPiglin;
+import net.minecraft.world.entity.monster.zombie.Zombie;
+import net.minecraft.world.entity.monster.zombie.ZombifiedPiglin;
 import net.minecraft.world.entity.player.Inventory;
 import net.minecraft.world.entity.player.Player;
 import net.minecraft.world.inventory.AbstractContainerMenu;
@@ -84,13 +85,22 @@ import net.minecraft.world.level.Level;
 import net.minecraft.world.level.ServerLevelAccessor;
 import net.minecraft.world.level.block.state.BlockState;
 import net.minecraft.world.level.material.PushReaction;
+import net.minecraft.world.level.storage.ValueInput;
+import net.minecraft.world.level.storage.ValueOutput;
 import net.minecraft.world.level.storage.loot.LootTable;
 import net.minecraft.world.phys.Vec3;
 import net.minecraft.world.scores.PlayerTeam;
 import org.jetbrains.annotations.NotNull;
-import software.bernie.geckolib.animatable.GeoEntity;
-import software.bernie.geckolib.animation.*;
-import software.bernie.geckolib.animation.AnimationState;
+import com.geckolib.animatable.GeoEntity;
+import com.geckolib.animatable.manager.AnimatableManager;
+import com.geckolib.animation.AnimationController;
+import com.geckolib.animation.RawAnimation;
+import com.geckolib.animation.object.PlayState;
+import com.geckolib.animation.state.AnimationTest;
+import com.geckolib.cache.animation.Animation;
+import com.geckolib.animation.object.LoopType;
+import net.minecraft.core.UUIDUtil;
+import net.minecraft.server.level.ServerLevel;
 
 import javax.annotation.Nullable;
 import java.util.*;
@@ -138,8 +148,8 @@ public class EntityUmvuthi extends MowzieGeckoEntity implements LeaderSunstrikeI
     });
     public static final AbilityType<EntityUmvuthi, SupernovaAbility> SUPERNOVA_ABILITY = new AbilityType<>("umvuthi_supernova", SupernovaAbility::new);
 
-    protected AnimationController<MowzieGeckoEntity> maskController = new MowzieAnimationController<>(this, "mask_controller", 1, this::predicateMask, 0.0);
-    protected AnimationController<MowzieGeckoEntity> blinkController = new MowzieAnimationController<>(this, "blink_controller", 1, this::predicateBlink, 0.0);
+    protected AnimationController<MowzieGeckoEntity> maskController = new MowzieAnimationController<>("mask_controller", 1, this::predicateMask);
+    protected AnimationController<MowzieGeckoEntity> blinkController = new MowzieAnimationController<>("blink_controller", 1, this::predicateBlink);
 
     private static final int MAX_HEALTH = 150;
     private static final int SUNSTRIKE_PAUSE_MAX = 50;
@@ -154,9 +164,9 @@ public class EntityUmvuthi extends MowzieGeckoEntity implements LeaderSunstrikeI
     private static final EntityDataAccessor<Integer> DIALOGUE = SynchedEntityData.defineId(EntityUmvuthi.class, EntityDataSerializers.INT);
     private static final EntityDataAccessor<Boolean> ANGRY = SynchedEntityData.defineId(EntityUmvuthi.class, EntityDataSerializers.BOOLEAN);
     private static final EntityDataAccessor<ItemStack> DESIRES = SynchedEntityData.defineId(EntityUmvuthi.class, EntityDataSerializers.ITEM_STACK);
-    private static final EntityDataAccessor<CompoundTag> TRADED_PLAYERS = SynchedEntityData.defineId(EntityUmvuthi.class, EntityDataSerializers.COMPOUND_TAG);
+    private static final EntityDataAccessor<CompoundTag> TRADED_PLAYERS = SynchedEntityData.defineId(EntityUmvuthi.class, com.bobmowzie.mowziesmobs.server.entity.EntityHandler.COMPOUND_TAG.get());
     private static final EntityDataAccessor<Float> HEALTH_LOST = SynchedEntityData.defineId(EntityUmvuthi.class, EntityDataSerializers.FLOAT);
-    private static final EntityDataAccessor<Optional<UUID>> MISBEHAVED_PLAYER = SynchedEntityData.defineId(EntityUmvuthi.class, EntityDataSerializers.OPTIONAL_UUID);
+    private static final EntityDataAccessor<Optional<UUID>> MISBEHAVED_PLAYER = SynchedEntityData.defineId(EntityUmvuthi.class, com.bobmowzie.mowziesmobs.server.entity.EntityHandler.OPTIONAL_UUID.get());
     private static final EntityDataAccessor<Boolean> IS_TRADING = SynchedEntityData.defineId(EntityUmvuthi.class, EntityDataSerializers.BOOLEAN);
     public ControlledAnimation legsUp = new ControlledAnimation(15);
     public ControlledAnimation angryEyebrow = new ControlledAnimation(5);
@@ -190,7 +200,7 @@ public class EntityUmvuthi extends MowzieGeckoEntity implements LeaderSunstrikeI
         }
         xpReward = 45;
 
-        if (world.isClientSide) {
+        if (world.isClientSide()) {
             headPos = new Vec3[]{new Vec3(0, 0, 0)};
             betweenHandPos = new Vec3[]{new Vec3(0, 0, 0)};
             blessingPlayerPos = new Vec3[]{new Vec3(0, 0, 0)};
@@ -206,10 +216,10 @@ public class EntityUmvuthi extends MowzieGeckoEntity implements LeaderSunstrikeI
         super.registerGoals();
         hurtByTargetAI = new UmvuthanaHurtByTargetAI(this, false);
         this.targetSelector.addGoal(3, hurtByTargetAI);
-        this.targetSelector.addGoal(4, new NearestAttackableTargetPredicateGoal<Player>(this, Player.class, 0, false, true, (TargetingConditions.forCombat().range(getAttributeValue(Attributes.FOLLOW_RANGE)).selector(target -> {
+        this.targetSelector.addGoal(4, new NearestAttackableTargetPredicateGoal<Player>(this, Player.class, 0, false, true, (TargetingConditions.forCombat().range(getAttributeValue(Attributes.FOLLOW_RANGE)).selector((target, targetLevel) -> {
             if (target instanceof Player) {
                 if (this.level().getDifficulty() == Difficulty.PEACEFUL) return false;
-                ItemStack headArmorStack = ((Player) target).getInventory().armor.get(3);
+                ItemStack headArmorStack = ((Player) target).getItemBySlot(EquipmentSlot.HEAD);
                 return !(headArmorStack.getItem() instanceof UmvuthanaMask) || target == getMisbehavedPlayer();
             }
             return true;
@@ -221,7 +231,7 @@ public class EntityUmvuthi extends MowzieGeckoEntity implements LeaderSunstrikeI
             }
         });
         this.targetSelector.addGoal(5, new NearestAttackableTargetGoal<>(this, IronGolem.class, 0, false, false, null));
-        this.targetSelector.addGoal(5, new NearestAttackableTargetGoal<>(this, Zombie.class, 0, false, false, (e) -> !(e instanceof ZombifiedPiglin)));
+        this.targetSelector.addGoal(5, new NearestAttackableTargetGoal<>(this, Zombie.class, 0, false, false, (e, eLevel) -> !(e instanceof ZombifiedPiglin)));
         this.targetSelector.addGoal(5, new NearestAttackableTargetGoal<>(this, AbstractSkeleton.class, 0, false, false, null));
         this.targetSelector.addGoal(4, new NearestAttackableTargetGoal<>(this, EntityElokosa.class, 0, false, false, null));
         this.goalSelector.addGoal(1, new UseAbilityAI<>(this, DIE_ABILITY));
@@ -258,10 +268,10 @@ public class EntityUmvuthi extends MowzieGeckoEntity implements LeaderSunstrikeI
 
     private static RawAnimation MASK_TWITCH_ANIM = RawAnimation.begin().thenLoop("mask_twitch");
 
-    protected <E extends GeoEntity> PlayState predicateMask(AnimationState<E> state)
+    protected <E extends GeoEntity> PlayState predicateMask(AnimationTest<E> state)
     {
         if (isAlive() && getActiveAbilityType() != SOLAR_BEAM_ABILITY && getActiveAbilityType() != SUPERNOVA_ABILITY && getActiveAbilityType() != SPAWN_ABILITY && getActiveAbilityType() != SPAWN_SUNBLOCKERS_ABILITY) {
-            state.getController().setAnimation(MASK_TWITCH_ANIM);
+            state.controller().setAnimation(MASK_TWITCH_ANIM);
             return PlayState.CONTINUE;
         }
         return PlayState.STOP;
@@ -269,18 +279,18 @@ public class EntityUmvuthi extends MowzieGeckoEntity implements LeaderSunstrikeI
 
     private static RawAnimation BLINK_ANIM = RawAnimation.begin().thenLoop("blink");
 
-    protected <E extends GeoEntity> PlayState predicateBlink(AnimationState<E> event)
+    protected <E extends GeoEntity> PlayState predicateBlink(AnimationTest<E> event)
     {
         if (isAlive() && getActiveAbilityType() != SOLAR_BEAM_ABILITY) {
-            event.getController().setAnimation(BLINK_ANIM);
+            event.controller().setAnimation(BLINK_ANIM);
             return PlayState.CONTINUE;
         }
         return PlayState.STOP;
     }
 
     @Override
-    protected <E extends GeoEntity> void loopingAnimations(AnimationState<E> event) {
-        event.getController().transitionLength(4);
+    protected <E extends GeoEntity> void loopingAnimations(AnimationTest<E> event) {
+        event.controller().setTransitionTicks(4);
         super.loopingAnimations(event);
     }
 
@@ -374,7 +384,7 @@ public class EntityUmvuthi extends MowzieGeckoEntity implements LeaderSunstrikeI
             }
         }
 
-        if (!level().isClientSide && getHealthLost() >= HEALTH_LOST_BETWEEN_SUNBLOCKERS && getActiveAbility() == null && !isNoAi() && getEntitiesNearby(EntityUmvuthanaCrane.class, 40).size() < 3) {
+        if (!level().isClientSide() && getHealthLost() >= HEALTH_LOST_BETWEEN_SUNBLOCKERS && getActiveAbility() == null && !isNoAi() && getEntitiesNearby(EntityUmvuthanaCrane.class, 40).size() < 3) {
             sendAbilityMessage(SPAWN_SUNBLOCKERS_ABILITY);
             setHealthLost(0);
         }
@@ -414,7 +424,7 @@ public class EntityUmvuthi extends MowzieGeckoEntity implements LeaderSunstrikeI
                 hurtByTargetAI.stop();
             }
         } else {
-            if (!level().isClientSide) {
+            if (!level().isClientSide()) {
                 this.setAngry(false);
             }
         }
@@ -454,12 +464,12 @@ public class EntityUmvuthi extends MowzieGeckoEntity implements LeaderSunstrikeI
 //                this.playSound(MMSounds.ENTITY_UMVUTHI_BURST, 1.7f, 1.5f);
 //            }
             if (getActiveAbility().getTicksInUse() == 10) {
-                if (level().isClientSide) {
+                if (level().isClientSide()) {
                     spawnExplosionParticles(30);
                 }
                 this.playSound(MMSounds.ENTITY_UMVUTHI_ATTACK.get(), 1.7f, 0.9f);
             }
-            if (getActiveAbility().getTicksInUse() <= 6 && level().isClientSide) {
+            if (getActiveAbility().getTicksInUse() <= 6 && level().isClientSide()) {
                 int particleCount = 8;
                 while (--particleCount != 0) {
                     double radius = 2f;
@@ -482,7 +492,7 @@ public class EntityUmvuthi extends MowzieGeckoEntity implements LeaderSunstrikeI
             if (getActiveAbility().getTicksInUse() == 1) {
                 blessingPlayer = getCustomer();
             }
-            if (level().isClientSide && blessingPlayer != null) {
+            if (level().isClientSide() && blessingPlayer != null) {
                 blessingPlayerPos[0] = blessingPlayer.position().add(new Vec3(0, blessingPlayer.getBbHeight() / 2f, 0));
                 if (getActiveAbility().getTicksInUse() > 5 && getActiveAbility().getTicksInUse() < 40) {
                     int particleCount = 2;
@@ -514,16 +524,16 @@ public class EntityUmvuthi extends MowzieGeckoEntity implements LeaderSunstrikeI
             }
         }
 
-        if (tickCount % 40 == 0) {
+        if (tickCount % 40 == 0 && level() instanceof ServerLevel serverLevel) {
             for (Player player : getPlayersNearby(15, 15, 15, 15)) {
-                ItemStack headArmorStack = player.getInventory().armor.get(3);
-                if (getTarget() != player && canAttack(player, GIVE_ACHIEVEMENT_PRED) && headArmorStack.getItem() instanceof UmvuthanaMask) {
+                ItemStack headArmorStack = player.getItemBySlot(EquipmentSlot.HEAD);
+                if (getTarget() != player && canAttack(player) && GIVE_ACHIEVEMENT_PRED.test(serverLevel, this, player) && headArmorStack.getItem() instanceof UmvuthanaMask) {
                     if (player instanceof ServerPlayer serverPlayer) AdvancementHandler.SNEAK_VILLAGE_TRIGGER.value().trigger(serverPlayer);
                 }
             }
         }
 
-        if (!level().isClientSide && getTarget() == null && getActiveAbilityType() != SOLAR_BEAM_ABILITY && getActiveAbilityType() != SUPERNOVA_ABILITY) {
+        if (!level().isClientSide() && getTarget() == null && getActiveAbilityType() != SOLAR_BEAM_ABILITY && getActiveAbilityType() != SUPERNOVA_ABILITY) {
             timeUntilHeal--;
             if (ConfigHandler.COMMON.MOBS.UMVUTHI.healsOutOfBattle.get() && timeUntilHeal <= 0) heal(0.3f);
             if (getHealth() == getMaxHealth()) setHealthLost(0);
@@ -564,15 +574,15 @@ public class EntityUmvuthi extends MowzieGeckoEntity implements LeaderSunstrikeI
     }
 
     @Override
-    public boolean hurt(DamageSource source, float damage) {
-    	if (source == level().damageSources().hotFloor()) return false;
+    public boolean hurtServer(ServerLevel level, DamageSource source, float damage) {
+    	if (source == level.damageSources().hotFloor()) return false;
         if (hasEffect(EffectHandler.SUNBLOCK) && !source.is(DamageTypeTags.BYPASSES_INVULNERABILITY)) {
             if (source.getDirectEntity() != null) playSound(MMSounds.ENTITY_WROUGHT_UNDAMAGED.get(), 0.4F, 2);
             return false;
         }
         timeUntilHeal = HEAL_PAUSE;
         float prevHealth = getHealth();
-        boolean superResult = super.hurt(source, damage);
+        boolean superResult = super.hurtServer(level, source, damage);
         if (superResult) {
             float diffHealth = prevHealth - getHealth();
             setHealthLost(getHealthLost() + diffHealth);
@@ -629,7 +639,7 @@ public class EntityUmvuthi extends MowzieGeckoEntity implements LeaderSunstrikeI
         builder.define(DIRECTION, 0);
         builder.define(DIALOGUE, 0);
         builder.define(ANGRY, false);
-        builder.define(DESIRES, new ItemStack(BuiltInRegistries.ITEM.get(ResourceLocation.tryParse(ConfigHandler.COMMON.MOBS.UMVUTHI.whichItem.get())), ConfigHandler.COMMON.MOBS.UMVUTHI.howMany.get()));
+        builder.define(DESIRES, new ItemStack(BuiltInRegistries.ITEM.getValue(Identifier.tryParse(ConfigHandler.COMMON.MOBS.UMVUTHI.whichItem.get())), ConfigHandler.COMMON.MOBS.UMVUTHI.howMany.get()));
         builder.define(TRADED_PLAYERS, new CompoundTag());
         builder.define(HEALTH_LOST, 0.f);
         builder.define(MISBEHAVED_PLAYER, Optional.empty());
@@ -677,9 +687,9 @@ public class EntityUmvuthi extends MowzieGeckoEntity implements LeaderSunstrikeI
     public Set<UUID> getTradedPlayers() {
         Set<UUID> tradedPlayers = new HashSet<>();
         CompoundTag compound = getEntityData().get(TRADED_PLAYERS);
-        ListTag players = compound.getList("players", Tag.TAG_INT_ARRAY);
+        ListTag players = compound.getListOrEmpty("players");
         for (net.minecraft.nbt.Tag player : players) {
-            tradedPlayers.add(NbtUtils.loadUUID(player));
+            tradedPlayers.add(UUIDUtil.uuidFromIntArray(((IntArrayTag) player).getAsIntArray()));
         }
         return tradedPlayers;
     }
@@ -706,51 +716,54 @@ public class EntityUmvuthi extends MowzieGeckoEntity implements LeaderSunstrikeI
     }
 
     public boolean hasTradedWith(Player player) {
-        return getTradedPlayers().contains(player.getGameProfile().getId());
+        return getTradedPlayers().contains(player.getGameProfile().id());
     }
 
     public void rememberTrade(Player player) {
         CompoundTag compound = getEntityData().get(TRADED_PLAYERS);
-        ListTag players = compound.getList("players", Tag.TAG_INT_ARRAY);
-        players.add(NbtUtils.createUUID(player.getGameProfile().getId()));
+        ListTag players = compound.getListOrEmpty("players");
+        players.add(new IntArrayTag(UUIDUtil.uuidToIntArray(player.getGameProfile().id())));
         compound.put("players", players);
         getEntityData().set(TRADED_PLAYERS, compound);
     }
 
     @Override
-    public void addAdditionalSaveData(CompoundTag compound) {
-        super.addAdditionalSaveData(compound);
-        compound.putInt("direction", getDirectionData());
-        CompoundTag compoundTradedPlayers = getEntityData().get(TRADED_PLAYERS);
-        ListTag players = compoundTradedPlayers.getList("players", Tag.TAG_INT_ARRAY);
-        compound.put("players", players);
-        compound.putInt("HomePosX", this.getRestrictCenter().getX());
-        compound.putInt("HomePosY", this.getRestrictCenter().getY());
-        compound.putInt("HomePosZ", this.getRestrictCenter().getZ());
-        compound.putFloat("healthLost", this.getHealthLost());
+    public void addAdditionalSaveData(ValueOutput output) {
+        super.addAdditionalSaveData(output);
+        output.putInt("direction", getDirectionData());
+        ValueOutput.TypedOutputList<UUID> playersOutput = output.list("players", UUIDUtil.CODEC);
+        for (UUID uuid : getTradedPlayers()) {
+            playersOutput.add(uuid);
+        }
+        output.putInt("HomePosX", this.getHomePosition().getX());
+        output.putInt("HomePosY", this.getHomePosition().getY());
+        output.putInt("HomePosZ", this.getHomePosition().getZ());
+        output.putFloat("healthLost", this.getHealthLost());
         if (this.getMisbehavedPlayerId() != null) {
-            compound.putUUID("MisbehavedPlayer", this.getMisbehavedPlayerId());
+            output.store("MisbehavedPlayer", UUIDUtil.CODEC, this.getMisbehavedPlayerId());
         }
     }
 
     @Override
-    public void readAdditionalSaveData(CompoundTag compound) {
-        super.readAdditionalSaveData(compound);
-        setDirection(compound.getInt("direction"));
-        ListTag players = compound.getList("players", Tag.TAG_INT_ARRAY);
+    public void readAdditionalSaveData(ValueInput input) {
+        super.readAdditionalSaveData(input);
+        setDirection(input.getIntOr("direction", 0));
+        ListTag players = new ListTag();
+        input.list("players", UUIDUtil.CODEC).ifPresent(list -> {
+            for (UUID uuid : list) {
+                players.add(new IntArrayTag(UUIDUtil.uuidToIntArray(uuid)));
+            }
+        });
         setTradedPlayersCompound(players);
-        int i = compound.getInt("HomePosX");
-        int j = compound.getInt("HomePosY");
-        int k = compound.getInt("HomePosZ");
-        this.restrictTo(new BlockPos(i, j, k), -1);
-        setHealthLost(compound.getInt("healthLost"));
-        UUID uuid;
-        if (compound.hasUUID("MisbehavedPlayer")) {
-            uuid = compound.getUUID("MisbehavedPlayer");
-        } else {
-            String s = compound.getString("MisbehavedPlayer");
-            uuid = OldUsersConverter.convertMobOwnerIfNecessary(this.getServer(), s);
-        }
+        int i = input.getIntOr("HomePosX", 0);
+        int j = input.getIntOr("HomePosY", 0);
+        int k = input.getIntOr("HomePosZ", 0);
+        this.setHomeTo(new BlockPos(i, j, k), -1);
+        setHealthLost(input.getIntOr("healthLost", 0));
+        UUID uuid = input.read("MisbehavedPlayer", UUIDUtil.CODEC)
+                .orElseGet(() -> input.getString("MisbehavedPlayer")
+                        .map(s -> OldUsersConverter.convertMobOwnerIfNecessary(this.level() instanceof ServerLevel serverLevel ? serverLevel.getServer() : null, s))
+                        .orElse(null));
 
         if (uuid != null) {
             try {
@@ -830,7 +843,7 @@ public class EntityUmvuthi extends MowzieGeckoEntity implements LeaderSunstrikeI
     public void openGUI(Player playerEntity) {
         setCustomer(playerEntity);
         MMCommon.PROXY.setReferencedMob(this);
-        if (!this.level().isClientSide && getTarget() == null && isAlive()) {
+        if (!this.level().isClientSide() && getTarget() == null && isAlive()) {
             playerEntity.openMenu(new MenuProvider() {
                 @Override
                 public AbstractContainerMenu createMenu(int id, Inventory playerInventory, Player player) {
@@ -858,7 +871,7 @@ public class EntityUmvuthi extends MowzieGeckoEntity implements LeaderSunstrikeI
         if (isTrading() || getHealth() <= 0) {
             return false;
         }
-        ItemStack headStack = player.getInventory().armor.get(3);
+        ItemStack headStack = player.getItemBySlot(EquipmentSlot.HEAD);
         return headStack.getItem() instanceof UmvuthanaMask;
     }
 
@@ -877,18 +890,13 @@ public class EntityUmvuthi extends MowzieGeckoEntity implements LeaderSunstrikeI
     }
 
     @Override
-    protected ResourceKey<LootTable> getDefaultLootTable() {
-        return LootTableHandler.UMVUTHI;
-    }
-
-    @Override
     protected ConfigHandler.CombatConfig getCombatConfig() {
         return ConfigHandler.COMMON.MOBS.UMVUTHI.combatConfig;
     }
 
     @Override
-    public SpawnGroupData finalizeSpawn(ServerLevelAccessor world, DifficultyInstance difficulty, MobSpawnType reason, SpawnGroupData livingData) {
-        if (reason == MobSpawnType.SPAWN_EGG) {
+    public SpawnGroupData finalizeSpawn(ServerLevelAccessor world, DifficultyInstance difficulty, EntitySpawnReason reason, SpawnGroupData livingData) {
+        if (reason == EntitySpawnReason.SPAWN_ITEM_USE) {
             // Try to guess which player spawned Umvuthi, rotate towards them
             List<Player> players = getPlayersNearby(5, 5, 5, 5);
             if (!players.isEmpty()) {
@@ -908,12 +916,12 @@ public class EntityUmvuthi extends MowzieGeckoEntity implements LeaderSunstrikeI
                 setDirection(direction);
             }
         }
-        if (reason != MobSpawnType.STRUCTURE) restrictTo(blockPosition(), -1);
+        if (reason != EntitySpawnReason.STRUCTURE) setHomeTo(blockPosition(), -1);
         return super.finalizeSpawn(world, difficulty, reason, livingData);
     }
 
     @Override
-    public boolean causeFallDamage(float p_147187_, float p_147188_, DamageSource p_147189_) {
+    public boolean causeFallDamage(double p_147187_, float p_147188_, DamageSource p_147189_) {
         return false;
     }
 
@@ -965,7 +973,7 @@ public class EntityUmvuthi extends MowzieGeckoEntity implements LeaderSunstrikeI
             });
         }
 
-        private static final RawAnimation SUN_STRIKE_ANIM = RawAnimation.begin().then("sun_strike", Animation.LoopType.PLAY_ONCE);
+        private static final RawAnimation SUN_STRIKE_ANIM = RawAnimation.begin().then("sun_strike", LoopType.PLAY_ONCE);
 
         @Override
         public void start() {
@@ -1046,7 +1054,7 @@ public class EntityUmvuthi extends MowzieGeckoEntity implements LeaderSunstrikeI
             });
         }
 
-        private static final RawAnimation SOLAR_BEAM_ANIM = RawAnimation.begin().then("solar_beam", Animation.LoopType.PLAY_ONCE);
+        private static final RawAnimation SOLAR_BEAM_ANIM = RawAnimation.begin().then("solar_beam", LoopType.PLAY_ONCE);
 
         @Override
         public void start() {
@@ -1060,7 +1068,7 @@ public class EntityUmvuthi extends MowzieGeckoEntity implements LeaderSunstrikeI
             super.tickUsing();
             float radius1 = 0.8f;
             EntityUmvuthi entity = getUser();
-            if (getTicksInUse() == 4 && !entity.level().isClientSide) {
+            if (getTicksInUse() == 4 && !entity.level().isClientSide()) {
                 solarBeam = new EntitySolarBeam(EntityHandler.SOLAR_BEAM.get(), getUser().level(), entity, entity.getX() + radius1 * Math.sin(-entity.getYRot() * Math.PI / 180), entity.getY() + 1.4, entity.getZ() + radius1 * Math.cos(-entity.getYRot() * Math.PI / 180), (float) ((entity.yHeadRot + 90) * Math.PI / 180), (float) (-entity.getXRot() * Math.PI / 180), 55);
                 entity.level().addFreshEntity(solarBeam);
             }
@@ -1083,7 +1091,7 @@ public class EntityUmvuthi extends MowzieGeckoEntity implements LeaderSunstrikeI
             super(abilityType, user, SECTION_TRACK);
         }
 
-        private static final RawAnimation FLARE_ANIM = RawAnimation.begin().then("flare", Animation.LoopType.PLAY_ONCE);
+        private static final RawAnimation FLARE_ANIM = RawAnimation.begin().then("flare", LoopType.PLAY_ONCE);
 
         @Override
         public void start() {
@@ -1138,7 +1146,7 @@ public class EntityUmvuthi extends MowzieGeckoEntity implements LeaderSunstrikeI
             this.spawnSunblockers = spawnSunblockers;
         }
 
-        private static final RawAnimation SPAWN_STRIX_ANIM = RawAnimation.begin().then("spawn_strix", Animation.LoopType.PLAY_ONCE);
+        private static final RawAnimation SPAWN_STRIX_ANIM = RawAnimation.begin().then("spawn_strix", LoopType.PLAY_ONCE);
 
         @Override
         public void start() {
@@ -1174,11 +1182,12 @@ public class EntityUmvuthi extends MowzieGeckoEntity implements LeaderSunstrikeI
                         umvuthana = new EntityUmvuthanaCrane(EntityHandler.UMVUTHANA_CRANE.get(), entity.level());
                         ((EntityUmvuthanaCrane) umvuthana).hasTriedOrSucceededTeleport = false;
                     } else umvuthana = new EntityUmvuthanaMinion(EntityHandler.UMVUTHANA_MINION.get(), entity.level());
-                    umvuthana.absMoveTo(entity.getX() + 2 * Math.sin(-angle * (Math.PI / 180)), entity.getY() + 2.5, entity.getZ() + 2 * Math.cos(-angle * (Math.PI / 180)), entity.yHeadRot, 0);
+                    umvuthana.snapTo(entity.getX() + 2 * Math.sin(-angle * (Math.PI / 180)), entity.getY() + 2.5, entity.getZ() + 2 * Math.cos(-angle * (Math.PI / 180)), entity.yHeadRot, 0);
                     umvuthana.setActive(false);
                     umvuthana.active = false;
-                    umvuthana.finalizeSpawn((ServerLevelAccessor) entity.getCommandSenderWorld(), entity.level().getCurrentDifficultyAt(umvuthana.blockPosition()), MobSpawnType.MOB_SUMMONED, null);
-                    umvuthana.restrictTo(entity.getRestrictCenter(), 25);
+                    ServerLevel umvuthanaSpawnLevel = (ServerLevel) entity.level();
+                    umvuthana.finalizeSpawn(umvuthanaSpawnLevel, umvuthanaSpawnLevel.getCurrentDifficultyAt(umvuthana.blockPosition()), EntitySpawnReason.MOB_SUMMONED, null);
+                    umvuthana.setHomeTo(entity.getHomePosition(), 25);
                     if (entity.getTeam() instanceof PlayerTeam) {
                         umvuthana.level().getScoreboard().addPlayerToTeam(umvuthana.getScoreboardName(), (PlayerTeam) entity.getTeam());
                     }
@@ -1216,7 +1225,7 @@ public class EntityUmvuthi extends MowzieGeckoEntity implements LeaderSunstrikeI
             super(abilityType, user, SECTION_TRACK);
         }
 
-        private static final RawAnimation SUPERNOVA_ANIM = RawAnimation.begin().then("supernova", Animation.LoopType.PLAY_ONCE);
+        private static final RawAnimation SUPERNOVA_ANIM = RawAnimation.begin().then("supernova", LoopType.PLAY_ONCE);
 
         @Override
         public void start() {
@@ -1246,14 +1255,14 @@ public class EntityUmvuthi extends MowzieGeckoEntity implements LeaderSunstrikeI
             }
 
             if (getCurrentSection().sectionType == AbilitySection.AbilitySectionType.STARTUP) {
-                getUser().addEffect(new MobEffectInstance(MobEffects.DAMAGE_RESISTANCE, 2, 1, false, false));
+                getUser().addEffect(new MobEffectInstance(MobEffects.RESISTANCE, 2, 1, false, false));
             }
 
             if (getTicksInUse() == 40) {
                 getUser().playSound(MMSounds.ENTITY_UMVUTHI_ROAR.get(), 3f, 1f);
             }
 
-            if (getLevel().isClientSide) {
+            if (getLevel().isClientSide()) {
                 superNovaEffects(this, getUser().betweenHandPos, getLevel());
             }
         }
@@ -1262,7 +1271,7 @@ public class EntityUmvuthi extends MowzieGeckoEntity implements LeaderSunstrikeI
         protected void beginSection(AbilitySection section) {
             super.beginSection(section);
             if (section.sectionType == AbilitySection.AbilitySectionType.ACTIVE) {
-                if (!getUser().level().isClientSide) {
+                if (!getUser().level().isClientSide()) {
                     Vec3 offset = new Vec3(1.1f, 0, 0);
                     offset = offset.yRot((float) Math.toRadians(-getUser().getYRot() - 90));
                     EntitySuperNova superNova = new EntitySuperNova(EntityHandler.SUPER_NOVA.get(), getUser().level(), getUser(), getUser().getX() + offset.x, getUser().getY() + 0.05, getUser().getZ() + offset.z);
@@ -1283,9 +1292,13 @@ public class EntityUmvuthi extends MowzieGeckoEntity implements LeaderSunstrikeI
             if (clientPlayer == null) return;
             double distToCaster = activeAbility.getUser().position().distanceToSqr(clientPlayer.position());
             if (distToCaster < 1000) {
-                Minecraft.getInstance().gameRenderer.darkenWorldAmount += 0.06f;
-                if (Minecraft.getInstance().gameRenderer.darkenWorldAmount > 1.0f)
-                    Minecraft.getInstance().gameRenderer.darkenWorldAmount = 1.0f;
+                // FIXME 26.1.2 port :: GameRenderer#darkenWorldAmount was removed with no direct field replacement.
+                // The vanilla "darken screen" vignette during boss fights is now driven declaratively via
+                // BossEvent#setDarkenScreen(boolean) / LerpingBossEvent (see net.minecraft.client.gui.components.BossHealthOverlay
+                // and net.minecraft.client.renderer.fog.FogRenderer#computeFogColor's darkenWorldAmount parameter, which is now
+                // sourced from the boss bar overlay rather than settable directly). This manual per-tick screen-darkening
+                // during the Supernova ability has no drop-in replacement here; needs a proper redesign (e.g. driving it through
+                // MMBossInfoServer/the boss bar's darkenScreen flag, or a custom render-time hook) - not resolved as part of this port.
             }
 
             // Particle effects

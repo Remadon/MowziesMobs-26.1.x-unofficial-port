@@ -4,7 +4,7 @@ loaderVersion="[43,)"
 issueTrackerURL="https://github.com/BobMowzie/MowziesMobs/issues"
 [[mods]]
     modId="mowziesmobs"
-    version="1.8.2"
+    version="1.9.0"
     displayName="Mowzie's Mobs"
     displayURL="https://www.curseforge.com/minecraft/mc-mods/mowzies-mobs"
     authors="BobMowzie, Wadoo, Vakypanda, Noonyez, pau101"
@@ -13,18 +13,18 @@ issueTrackerURL="https://github.com/BobMowzie/MowziesMobs/issues"
 [[dependencies.mowziesmobs]]
     modId="neoforge"
     mandatory=true
-    versionRange="[21.1.162,)"
+    versionRange="[26.1.0.0,26.2)"
     ordering="NONE"
     side="BOTH"
 [[dependencies.mowziesmobs]]
     modId="minecraft"
     mandatory=true
-    versionRange="[1.21.1,)"
+    versionRange="[26.1,26.2)"
     ordering="NONE"
     side="BOTH"
 [[dependencies.mowziesmobs]]
     modId="geckolib"
     mandatory=true
-    versionRange="[4.8.3,)"
+    versionRange="[5.5.2,)"
     ordering="BEFORE"
     side="BOTH"

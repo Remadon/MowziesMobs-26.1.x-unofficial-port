@@ -1,30 +1,45 @@
 package com.bobmowzie.mowziesmobs.client.model.armor;
 
 import com.bobmowzie.mowziesmobs.MMCommon;
+import com.bobmowzie.mowziesmobs.server.entity.umvuthana.MaskType;
 import com.bobmowzie.mowziesmobs.server.item.ItemUmvuthanaMask;
-import net.minecraft.client.renderer.RenderType;
-import net.minecraft.resources.ResourceLocation;
-import software.bernie.geckolib.model.GeoModel;
+import com.geckolib.constant.dataticket.DataTicket;
+import com.geckolib.constant.DataTickets;
+import com.geckolib.model.GeoModel;
+import com.geckolib.renderer.base.GeoRenderState;
+import net.minecraft.client.renderer.rendertype.RenderType;
+import net.minecraft.client.renderer.rendertype.RenderTypes;
+import net.minecraft.resources.Identifier;
 
 public class UmvuthanaMaskModel extends GeoModel<ItemUmvuthanaMask> {
+    // PORTING NOTE: getModelResource/getTextureResource(GeoRenderState) no longer receive the live animatable, but
+    // this single shared model instance is used for every MaskType variant of ItemUmvuthanaMask (a separate Item
+    // instance is registered per mask type), so the mask type needs to be captured up front - see
+    // ModelElokosa/ModelUmvuthana for the same pattern.
+    private static final DataTicket<MaskType> MASK_TYPE = DataTickets.create("mowziesmobs_umvuthana_mask_item_type", MaskType.class);
 
     @Override
-    public ResourceLocation getModelResource(ItemUmvuthanaMask object) {
-        return ResourceLocation.fromNamespaceAndPath(MMCommon.MODID, "geo/mask_" + object.getMaskType().name + ".geo.json");
+    public void addAdditionalStateData(ItemUmvuthanaMask animatable, Object relatedObject, GeoRenderState renderState) {
+        renderState.addGeckolibData(MASK_TYPE, animatable.getMaskType());
     }
 
     @Override
-    public ResourceLocation getTextureResource(ItemUmvuthanaMask object) {
-        return ResourceLocation.fromNamespaceAndPath(MMCommon.MODID, "textures/item/umvuthana_mask_" + object.getMaskType().name + ".png");
+    public Identifier getModelResource(GeoRenderState renderState) {
+        return Identifier.fromNamespaceAndPath(MMCommon.MODID, "mask_" + renderState.getGeckolibData(MASK_TYPE).name);
     }
 
     @Override
-    public ResourceLocation getAnimationResource(ItemUmvuthanaMask animatable) {
-        return ResourceLocation.fromNamespaceAndPath(MMCommon.MODID, "animations/umvuthana_mask.animation.json");
+    public Identifier getTextureResource(GeoRenderState renderState) {
+        return Identifier.fromNamespaceAndPath(MMCommon.MODID, "textures/item/umvuthana_mask_" + renderState.getGeckolibData(MASK_TYPE).name + ".png");
     }
 
     @Override
-    public RenderType getRenderType(ItemUmvuthanaMask animatable, ResourceLocation texture) {
-        return RenderType.entityCutoutNoCull(texture);
+    public Identifier getAnimationResource(ItemUmvuthanaMask animatable) {
+        return Identifier.fromNamespaceAndPath(MMCommon.MODID, "umvuthana_mask");
+    }
+
+    // PORTING NOTE: no longer @Override - see ModelRockSling for why (GeoModel#getRenderType removed in GeckoLib 5).
+    public RenderType getRenderType(ItemUmvuthanaMask animatable, Identifier texture) {
+        return RenderTypes.entityCutout(texture);
     }
 }

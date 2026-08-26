@@ -7,7 +7,7 @@ import com.bobmowzie.mowziesmobs.server.item.ItemHandler;
 import net.minecraft.core.Holder;
 import net.minecraft.core.registries.BuiltInRegistries;
 import net.minecraft.resources.ResourceKey;
-import net.minecraft.resources.ResourceLocation;
+import net.minecraft.resources.Identifier;
 import net.minecraft.tags.BiomeTags;
 import net.minecraft.tags.BlockTags;
 import net.minecraft.tags.TagKey;
@@ -38,7 +38,7 @@ public final class ConfigHandler {
     public static ModConfigSpec CLIENT_CONFIG;
 
     private static final Predicate<Object> STRING_PREDICATE = s -> s instanceof String;
-    private static final Predicate<Object> RESOURCE_LOCATION_PREDICATE = STRING_PREDICATE.and(s -> ResourceLocation.tryParse((String) s) != null);
+    private static final Predicate<Object> RESOURCE_LOCATION_PREDICATE = STRING_PREDICATE.and(s -> Identifier.tryParse((String) s) != null);
     private static final Predicate<Object> BIOME_COMBO_PREDICATE = STRING_PREDICATE.and(s -> {
         String bigString = (String) s;
         String[] typeStrings = bigString.replace(" ", "").split("[,!]");
@@ -50,7 +50,14 @@ public final class ConfigHandler {
         return true;
     });
 
-    private static final Predicate<Object> ITEM_NAME_PREDICATE = RESOURCE_LOCATION_PREDICATE.and(s -> BuiltInRegistries.ITEM.containsKey(ResourceLocation.tryParse((String) s)));
+    // PORTING NOTE (1.21.1 -> 26.1.2): NeoForge's ModConfigSpec now eagerly validates each value's default against
+    // its predicate while building the spec (during mod construction), before this mod's own DeferredRegister items
+    // have fired their RegisterEvent - so a `BuiltInRegistries.ITEM.containsKey(...)` check here would always reject
+    // a modded item used as a default value (confirmed: "trade_which_item" defaulting to mowziesmobs:bluff_rod
+    // failed spec validation at startup). Dropped the registry-presence check, keeping only Identifier-format
+    // validation (matches RESOURCE_LOCATION_PREDICATE) - a config value pointing at a nonexistent item id will just
+    // be ignored at actual use rather than caught at load time.
+    private static final Predicate<Object> ITEM_NAME_PREDICATE = RESOURCE_LOCATION_PREDICATE;
 
     static {
         COMMON = new Common(COMMON_BUILDER);
@@ -960,7 +967,7 @@ public final class ConfigHandler {
         }
 
         if (object instanceof ResourceKey<?> key) {
-            return key.location().toString();
+            return key.identifier().toString();
         }
 
         if (object instanceof Item item) {

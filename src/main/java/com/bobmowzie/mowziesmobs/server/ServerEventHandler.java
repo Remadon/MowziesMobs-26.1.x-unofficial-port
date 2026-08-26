@@ -40,7 +40,8 @@ import com.bobmowzie.mowziesmobs.server.sound.MMSounds;
 import com.bobmowzie.mowziesmobs.server.world.feature.structure.StructureTypeHandler;
 import net.minecraft.core.BlockPos;
 import net.minecraft.core.registries.Registries;
-import net.minecraft.resources.ResourceLocation;
+import net.minecraft.resources.Identifier;
+import net.minecraft.server.level.ServerLevel;
 import net.minecraft.server.level.ServerPlayer;
 import net.minecraft.stats.Stats;
 import net.minecraft.tags.BlockTags;
@@ -59,13 +60,13 @@ import net.minecraft.world.entity.ai.goal.AvoidEntityGoal;
 import net.minecraft.world.entity.ai.goal.target.NearestAttackableTargetGoal;
 import net.minecraft.world.entity.ai.targeting.TargetingConditions;
 import net.minecraft.world.entity.animal.Animal;
-import net.minecraft.world.entity.animal.Parrot;
+import net.minecraft.world.entity.animal.parrot.Parrot;
 import net.minecraft.world.entity.decoration.ItemFrame;
-import net.minecraft.world.entity.monster.AbstractSkeleton;
-import net.minecraft.world.entity.monster.Pillager;
-import net.minecraft.world.entity.monster.Zombie;
-import net.minecraft.world.entity.monster.ZombifiedPiglin;
-import net.minecraft.world.entity.npc.AbstractVillager;
+import net.minecraft.world.entity.monster.skeleton.AbstractSkeleton;
+import net.minecraft.world.entity.monster.illager.Pillager;
+import net.minecraft.world.entity.monster.zombie.Zombie;
+import net.minecraft.world.entity.monster.zombie.ZombifiedPiglin;
+import net.minecraft.world.entity.npc.villager.AbstractVillager;
 import net.minecraft.world.entity.player.Player;
 import net.minecraft.world.item.Item;
 import net.minecraft.world.item.ItemStack;
@@ -86,6 +87,7 @@ import net.neoforged.neoforge.event.entity.player.PlayerEvent;
 import net.neoforged.neoforge.event.entity.player.PlayerInteractEvent;
 import net.neoforged.neoforge.event.furnace.FurnaceFuelBurnTimeEvent;
 import net.neoforged.neoforge.event.level.BlockEvent;
+import net.neoforged.neoforge.event.level.block.BreakBlockEvent;
 import net.neoforged.neoforge.event.tick.EntityTickEvent;
 import net.neoforged.neoforge.event.tick.PlayerTickEvent;
 import net.neoforged.neoforge.network.PacketDistributor;
@@ -139,15 +141,15 @@ public final class ServerEventHandler {
         }
     }
 
-    private static final ResourceLocation GEOMANCY_BELT_DEFENSE = ResourceLocation.fromNamespaceAndPath(MMCommon.MODID, "geomancy_belt_defense_boost");
+    private static final Identifier GEOMANCY_BELT_DEFENSE = Identifier.fromNamespaceAndPath(MMCommon.MODID, "geomancy_belt_defense_boost");
     private static final AttributeModifier DEFENSE_MODIFIER_BELT = new AttributeModifier(GEOMANCY_BELT_DEFENSE, 4D, AttributeModifier.Operation.ADD_VALUE);
-    private static final ResourceLocation GEOMANCY_BELT_KNOCKBACK_RESISTANCE = ResourceLocation.fromNamespaceAndPath(MMCommon.MODID, "geomancy_belt_knockback_resistance_boost");
+    private static final Identifier GEOMANCY_BELT_KNOCKBACK_RESISTANCE = Identifier.fromNamespaceAndPath(MMCommon.MODID, "geomancy_belt_knockback_resistance_boost");
     private static final AttributeModifier KNOCKBACK_MODIFIER_BELT = new AttributeModifier(GEOMANCY_BELT_KNOCKBACK_RESISTANCE, 1D, AttributeModifier.Operation.ADD_VALUE);
 
     @SubscribeEvent
     public void onLivingTick(EntityTickEvent.Post event) {
         if (event.getEntity() instanceof LivingEntity livingEntity) {
-            if (!livingEntity.level().isClientSide) {
+            if (!livingEntity.level().isClientSide()) {
                 Item headItemStack = livingEntity.getItemBySlot(EquipmentSlot.HEAD).getItem();
                 if (headItemStack instanceof ItemUmvuthanaMask mask) {
                     EffectHandler.addOrCombineEffect(livingEntity, mask.getPotion(), 50, 0, true, false);
@@ -156,8 +158,13 @@ public final class ServerEventHandler {
 
             if (livingEntity instanceof Mob mob && !(livingEntity instanceof EntityUmvuthanaCrane)) {
                 if (mob.getTarget() instanceof EntityUmvuthi && mob.getTarget().hasEffect(EffectHandler.SUNBLOCK)) {
-                    EntityUmvuthanaCrane sunblocker = mob.level().getNearestEntity(EntityUmvuthanaCrane.class, TargetingConditions.DEFAULT, mob, mob.getX(), mob.getY() + mob.getEyeHeight(), mob.getZ(), mob.getBoundingBox().inflate(40.0D, 15.0D, 40.0D));
-                    mob.setTarget(sunblocker);
+                    // PORTING NOTE (1.21.1 -> 26.1.2): Level#getNearestEntity moved to the ServerEntityGetter
+                    // interface (implemented by ServerLevel, not the plain Level a Mob's level() returns) -
+                    // confirmed against real 26.1.2 ServerEntityGetter source, same overload shape survives.
+                    if (mob.level() instanceof ServerLevel serverLevel) {
+                        EntityUmvuthanaCrane sunblocker = serverLevel.getNearestEntity(EntityUmvuthanaCrane.class, TargetingConditions.DEFAULT, mob, mob.getX(), mob.getY() + mob.getEyeHeight(), mob.getZ(), mob.getBoundingBox().inflate(40.0D, 15.0D, 40.0D));
+                        mob.setTarget(sunblocker);
+                    }
                 }
             }
 
@@ -168,7 +175,7 @@ public final class ServerEventHandler {
             // Geomancer Belt mechanics
             AttributeInstance attributeInstanceArmor = livingEntity.getAttribute(Attributes.ARMOR);
             AttributeInstance attributeInstanceKnockbackRes = livingEntity.getAttribute(Attributes.KNOCKBACK_RESISTANCE);
-            if (livingEntity.getItemBySlot(EquipmentSlot.LEGS).is(ItemHandler.GEOMANCER_BELT.get()) && livingEntity.hasEffect(MobEffects.MOVEMENT_SLOWDOWN)) {
+            if (livingEntity.getItemBySlot(EquipmentSlot.LEGS).is(ItemHandler.GEOMANCER_BELT.get()) && livingEntity.hasEffect(MobEffects.SLOWNESS)) {
                 if (attributeInstanceArmor != null && !attributeInstanceArmor.hasModifier(GEOMANCY_BELT_DEFENSE)) {
                     attributeInstanceArmor.addTransientModifier(DEFENSE_MODIFIER_BELT);
                 }
@@ -314,6 +321,11 @@ public final class ServerEventHandler {
         }
     }
 
+    // PORTING NOTE (1.21.1 -> 26.1.2): LivingDamageEvent.Post#getNewDamage() no longer exists - confirmed via javap
+    // against the real 26.1.2.95 neoforge jar: DamageContainer#captureInflictedDamage() locks the final computed
+    // damage into a new `inflictedDamage` field once the Pre-event damage pipeline finishes, and Post now exposes
+    // that via getInflictedDamage() instead of getNewDamage() (which only survives on LivingDamageEvent.Pre, where
+    // the damage amount is still mutable).
     @SubscribeEvent
     public void onLivingHurtPost(LivingDamageEvent.Post event) {
         if (event.getSource().is(DamageTypeTags.IS_FIRE)) {
@@ -332,7 +344,7 @@ public final class ServerEventHandler {
             }
         }
 
-        DataHandler.getData(event.getEntity(), DataHandler.LIVING_DATA).setLastDamage(event.getNewDamage());
+        DataHandler.getData(event.getEntity(), DataHandler.LIVING_DATA).setLastDamage(event.getInflictedDamage());
     }
 
     @SubscribeEvent
@@ -350,7 +362,7 @@ public final class ServerEventHandler {
     public void onLivingFall(LivingFallEvent event) {
         if (event.getEntity().getItemBySlot(EquipmentSlot.FEET).is(ItemHandler.GEOMANCER_SANDALS.get())) {
             if (event.getDistance() > 4) {
-                EffectHandler.addOrCombineEffect(event.getEntity(), MobEffects.MOVEMENT_SPEED, 60, 0, false, false);
+                EffectHandler.addOrCombineEffect(event.getEntity(), MobEffects.SPEED, 60, 0, false, false);
             }
         }
     }
@@ -428,7 +440,7 @@ public final class ServerEventHandler {
     }
 
     @SubscribeEvent
-    public void onBreakBlock(BlockEvent.BreakEvent event) {
+    public void onBreakBlock(BreakBlockEvent event) {
         if (event.getPlayer().hasEffect(EffectHandler.FROZEN)) {
             event.setCanceled(true);
             return;
@@ -481,7 +493,7 @@ public final class ServerEventHandler {
         }
 
         Player player = event.getEntity();
-        if (event.getLevel().isClientSide && player.getInventory().getSelected().isEmpty() && player.hasEffect(EffectHandler.SUNS_BLESSING)) {
+        if (event.getLevel().isClientSide() && player.getInventory().getSelectedItem().isEmpty() && player.hasEffect(EffectHandler.SUNS_BLESSING)) {
             if (player.isShiftKeyDown()) {
                 AbilityHandler.INSTANCE.sendPlayerTryAbilityMessage(event.getEntity(), AbilityHandler.SOLAR_BEAM_ABILITY);
             } else {
@@ -536,7 +548,7 @@ public final class ServerEventHandler {
             aggroUmvuthana(player);
         }
 
-        if (player.level().isClientSide() && player.getInventory().getSelected().isEmpty() && player.hasEffect(EffectHandler.SUNS_BLESSING) && player.level().getBlockState(event.getPos()).getMenuProvider(player.level(), event.getPos()) == null) {
+        if (player.level().isClientSide() && player.getInventory().getSelectedItem().isEmpty() && player.hasEffect(EffectHandler.SUNS_BLESSING) && player.level().getBlockState(event.getPos()).getMenuProvider(player.level(), event.getPos()) == null) {
             if (player.isShiftKeyDown()) {
                 AbilityHandler.INSTANCE.sendPlayerTryAbilityMessage(event.getEntity(), AbilityHandler.SOLAR_BEAM_ABILITY);
             } else {
@@ -566,19 +578,19 @@ public final class ServerEventHandler {
     @SubscribeEvent
     public void onLivingDamage(LivingDamageEvent.Post event) {
         LivingEntity entity = event.getEntity();
-        if (entity.getHealth() <= event.getNewDamage() && entity.hasEffect(EffectHandler.FROZEN)) {
+        if (entity.getHealth() <= event.getInflictedDamage() && entity.hasEffect(EffectHandler.FROZEN)) {
             entity.removeEffectNoUpdate(EffectHandler.FROZEN);
             DataHandler.getData(entity, DataHandler.FROZEN_DATA).onUnfreeze(entity);
             PacketDistributor.sendToPlayersTrackingEntityAndSelf(event.getEntity(), new MessageFreezeEffect(event.getEntity().getId(), false));
         }
 
-        if (event.getNewDamage() > 0 && event.getSource().getEntity() instanceof Player player) {
+        if (event.getInflictedDamage() > 0 && event.getSource().getEntity() instanceof Player player) {
             if (player.getItemBySlot(EquipmentSlot.CHEST).is(ItemHandler.GEOMANCER_ROBE.get())) {
                 spawnBoulderNearPlayer(player);
             }
         }
 
-        if (entity instanceof Player player && event.getSource() == player.damageSources().fall() && player.getHealth() <= event.getNewDamage()) {
+        if (entity instanceof Player player && event.getSource() == player.damageSources().fall() && player.getHealth() <= event.getInflictedDamage()) {
             PlayerData data = DataHandler.getData(player, DataHandler.PLAYER_DATA);
             if (data.getTestingSculptor() != null) {
                 EntitySculptor sculptor = data.getTestingSculptor();
@@ -762,7 +774,7 @@ public final class ServerEventHandler {
 //        }
 //    }
 
-    private static final AttributeModifier ATTACK_MODIFIER_BEADS = new AttributeModifier(ResourceLocation.fromNamespaceAndPath(MMCommon.MODID, "geomancy_beads_attack_boost"), 3D, AttributeModifier.Operation.ADD_VALUE);
+    private static final AttributeModifier ATTACK_MODIFIER_BEADS = new AttributeModifier(Identifier.fromNamespaceAndPath(MMCommon.MODID, "geomancy_beads_attack_boost"), 3D, AttributeModifier.Operation.ADD_VALUE);
 
     @SubscribeEvent
     public void onEquipmentChanged(LivingEquipmentChangeEvent event) {
@@ -807,8 +819,12 @@ public final class ServerEventHandler {
 
     @SubscribeEvent
     public void onSpawnPlacementCheck(MobSpawnEvent.SpawnPlacementCheck event) {
+        // PORTING NOTE (1.21.1 -> 26.1.2): RegistryAccess#registryOrThrow -> lookupOrThrow (see other files for the
+        // same rename), and Registry#get(Identifier) now returns Optional<Holder.Reference<T>> instead of a raw
+        // nullable T (confirmed against real 26.1.2 Registry source) - getValue(Identifier) is the direct
+        // nullable-T replacement this null-checked usage needs.
         StructureManager structureManager = event.getLevel().getLevel().structureManager();
-        Structure structure = structureManager.registryAccess().registryOrThrow(Registries.STRUCTURE).get(StructureTypeHandler.MONASTERY.getId());
+        Structure structure = structureManager.registryAccess().lookupOrThrow(Registries.STRUCTURE).getValue(StructureTypeHandler.MONASTERY.getId());
         if (event.getEntityType().getCategory() == MobCategory.MONSTER && structure != null && structureManager.getStructureAt(event.getPos(), structure).isValid()) {
             BlockState ground = event.getLevel().getBlockState(event.getPos().below());
             if (
@@ -839,7 +855,7 @@ public final class ServerEventHandler {
         List<EntityUmvuthi> barakos = getEntitiesNearby(player, EntityUmvuthi.class, 50);
         for (EntityUmvuthi barako : barakos) {
             if (barako.getTarget() == null || !(barako.getTarget() instanceof Player)) {
-                if (!player.isCreative() && !player.isSpectator() && player.blockPosition().distSqr(barako.getRestrictCenter()) < 900) {
+                if (!player.isCreative() && !player.isSpectator() && player.blockPosition().distSqr(barako.getHomePosition()) < 900) {
                     if (barako.canAttack(player)) barako.setMisbehavedPlayerId(player.getUUID());
                 }
             }
@@ -847,7 +863,7 @@ public final class ServerEventHandler {
         List<EntityUmvuthanaMinion> barakoas = getEntitiesNearby(player, EntityUmvuthanaMinion.class, 50);
         for (EntityUmvuthanaMinion barakoa : barakoas) {
             if (barakoa.getTarget() == null || !(barakoa.getTarget() instanceof Player)) {
-                if (player.blockPosition().distSqr(barakoa.getRestrictCenter()) < 900) {
+                if (player.blockPosition().distSqr(barakoa.getHomePosition()) < 900) {
                     if (barakoa.canAttack(player)) barakoa.setMisbehavedPlayerId(player.getUUID());
                 }
             }
@@ -895,7 +911,7 @@ public final class ServerEventHandler {
             if (EffectGeomancy.isBlockUseable(state)) {
                 EntityBoulderProjectile boulder = new EntityBoulderProjectile(EntityHandler.BOULDER_PROJECTILE.get(), player.level(), player, state, spawnBoulderPos, EntityGeomancyBase.GeomancyTier.SMALL);
                 boulder.setPos(spawnBoulderPos.getX() + 0.5F, spawnBoulderPos.getY() + 2, spawnBoulderPos.getZ() + 0.5F);
-                if (!player.level().isClientSide && boulder.checkCanSpawn()) {
+                if (!player.level().isClientSide() && boulder.checkCanSpawn()) {
                     player.level().addFreshEntity(boulder);
                     break;
                 }

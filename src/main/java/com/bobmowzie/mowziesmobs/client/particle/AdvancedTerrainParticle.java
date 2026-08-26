@@ -7,19 +7,20 @@ import com.bobmowzie.mowziesmobs.client.particle.util.ParticleComponent;
 import com.bobmowzie.mowziesmobs.client.particle.util.ParticleRotation;
 import com.bobmowzie.mowziesmobs.client.render.MMRenderType;
 import net.minecraft.client.Minecraft;
+import net.minecraft.client.color.block.BlockTintSource;
 import net.minecraft.client.multiplayer.ClientLevel;
 import net.minecraft.client.particle.Particle;
 import net.minecraft.client.particle.ParticleProvider;
-import net.minecraft.client.particle.ParticleRenderType;
+import net.minecraft.client.particle.SingleQuadParticle;
 import net.minecraft.client.particle.SpriteSet;
 import net.minecraft.client.renderer.LevelRenderer;
 import net.minecraft.core.BlockPos;
 import net.minecraft.core.Holder;
 import net.minecraft.core.particles.ParticleType;
+import net.minecraft.util.RandomSource;
 import net.minecraft.world.level.Level;
 import net.minecraft.world.level.block.Blocks;
 import net.minecraft.world.level.block.state.BlockState;
-import net.neoforged.neoforge.client.extensions.common.IClientBlockExtensions;
 import org.jetbrains.annotations.NotNull;
 
 // FIXME: Terrain particles don't render
@@ -31,13 +32,16 @@ public class AdvancedTerrainParticle extends AdvancedParticleBase {
     protected AdvancedTerrainParticle(ClientLevel worldIn, double xCoordIn, double yCoordIn, double zCoordIn, double motionX, double motionY, double motionZ, double scale, double drag, double duration, boolean canCollide, BlockState state, BlockPos pos, ParticleComponent[] components) {
         super(worldIn, xCoordIn, yCoordIn, zCoordIn, motionX, motionY, motionZ, new ParticleRotation.FaceCamera(0), scale, 1.0, 1.0, 1.0, 1.0, drag, duration, false, canCollide, components);
         this.pos = pos;
-        this.setSprite(Minecraft.getInstance().getBlockRenderer().getBlockModelShaper().getParticleIcon(state));
+        this.setSprite(Minecraft.getInstance().getModelManager().getBlockStateModelSet().getParticleMaterial(state).sprite());
         this.red = 0.6F;
         this.green = 0.6F;
         this.blue = 0.6F;
 
-        if (IClientBlockExtensions.of(state).areBreakingParticlesTinted(state, worldIn, pos)) {
-            int i = Minecraft.getInstance().getBlockColors().getColor(state, worldIn, pos, 0);
+        // The NeoForge hook this used to go through (IClientBlockExtensions#areBreakingParticlesTinted) was
+        // removed; vanilla's own TerrainParticle now looks up tinting the same way below, so this mirrors that.
+        BlockTintSource tintSource = Minecraft.getInstance().getBlockColors().getTintSource(state, 0);
+        if (tintSource != null) {
+            int i = tintSource.colorAsTerrainParticle(state, worldIn, pos);
             this.red *= (float)(i >> 16 & 255) / 255.0F;
             this.green *= (float)(i >> 8 & 255) / 255.0F;
             this.blue *= (float)(i & 255) / 255.0F;
@@ -50,13 +54,16 @@ public class AdvancedTerrainParticle extends AdvancedParticleBase {
 
     public Particle updateSprite(BlockState state, BlockPos pos) { //FORGE: we cannot assume that the x y z of the particles match the block pos of the block.
         if (pos != null) // There are cases where we are not able to obtain the correct source pos, and need to fallback to the non-model data version
-            this.setSprite(Minecraft.getInstance().getBlockRenderer().getBlockModelShaper().getTexture(state, level, pos));
+            this.setSprite(Minecraft.getInstance().getModelManager().getBlockStateModelSet().getParticleMaterial(state, level, pos).sprite());
         return this;
     }
 
+    // TODO(out of scope): MMRenderType needs to expose a `SingleQuadParticle.Layer TERRAIN_LAYER_NO_CULL`
+    // field (custom RenderPipeline with backface culling disabled) to replace the old TERRAIN_SHEET_NO_CULL.
+    // See final report for details - this will not compile until MMRenderType is updated.
     @Override
-    public @NotNull ParticleRenderType getRenderType() {
-        return MMRenderType.TERRAIN_SHEET_NO_CULL;
+    public SingleQuadParticle.Layer getLayer() {
+        return MMRenderType.TERRAIN_LAYER_NO_CULL;
     }
 
     @Override
@@ -80,9 +87,9 @@ public class AdvancedTerrainParticle extends AdvancedParticleBase {
     }
 
     @Override
-    public int getLightColor(float p_108291_) {
-        int i = super.getLightColor(p_108291_);
-        return i == 0 && this.level.hasChunkAt(this.pos) ? LevelRenderer.getLightColor(this.level, this.pos) : i;
+    public int getLightCoords(float p_108291_) {
+        int i = super.getLightCoords(p_108291_);
+        return i == 0 && this.level.hasChunkAt(this.pos) ? LevelRenderer.getLightCoords(this.level, this.pos) : i;
     }
 
     public static class Factory implements ParticleProvider<TerrainParticleType> {
@@ -93,7 +100,7 @@ public class AdvancedTerrainParticle extends AdvancedParticleBase {
         }
 
         @Override
-        public Particle createParticle(TerrainParticleType typeIn, @NotNull ClientLevel worldIn, double x, double y, double z, double xSpeed, double ySpeed, double zSpeed) {
+        public Particle createParticle(TerrainParticleType typeIn, @NotNull ClientLevel worldIn, double x, double y, double z, double xSpeed, double ySpeed, double zSpeed, RandomSource random) {
             BlockState blockstate = typeIn.state();
 
             if (blockstate.isAir() || blockstate.is(Blocks.MOVING_PISTON)) {

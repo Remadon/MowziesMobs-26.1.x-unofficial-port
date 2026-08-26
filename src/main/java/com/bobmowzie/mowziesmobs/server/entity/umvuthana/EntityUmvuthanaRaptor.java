@@ -14,7 +14,7 @@ import net.minecraft.world.entity.ai.attributes.AttributeSupplier;
 import net.minecraft.world.entity.ai.attributes.Attributes;
 import net.minecraft.world.entity.animal.Animal;
 import net.minecraft.world.entity.monster.Enemy;
-import net.minecraft.world.entity.npc.Villager;
+import net.minecraft.world.entity.npc.villager.Villager;
 import net.minecraft.world.level.Level;
 import net.minecraft.world.level.LevelAccessor;
 import net.minecraft.world.level.LevelReader;
@@ -66,7 +66,7 @@ public class EntityUmvuthanaRaptor extends EntityUmvuthana implements LeaderSuns
             pack.get(i).index = i;
         }
 
-        if (!level().isClientSide && pack != null) {
+        if (!level().isClientSide() && pack != null) {
             float theta = (2 * (float) Math.PI / pack.size());
             for (int i = 0; i < pack.size(); i++) {
                 EntityUmvuthanaFollowerToRaptor hunter = pack.get(i);
@@ -79,7 +79,7 @@ public class EntityUmvuthanaRaptor extends EntityUmvuthana implements LeaderSuns
             }
         }
 
-        if (!this.level().isClientSide && this.level().getDifficulty() == Difficulty.PEACEFUL)
+        if (!this.level().isClientSide() && this.level().getDifficulty() == Difficulty.PEACEFUL)
         {
             this.discard();
         }
@@ -156,7 +156,7 @@ public class EntityUmvuthanaRaptor extends EntityUmvuthana implements LeaderSuns
 
     @Nullable
     @Override
-    public SpawnGroupData finalizeSpawn(ServerLevelAccessor world, DifficultyInstance difficulty, MobSpawnType reason, @Nullable SpawnGroupData livingData) {
+    public SpawnGroupData finalizeSpawn(ServerLevelAccessor world, DifficultyInstance difficulty, EntitySpawnReason reason, @Nullable SpawnGroupData livingData) {
         int size = random.nextInt(2) + 3;
         float theta = (2 * (float) Math.PI / size);
         for (int i = 0; i <= size; i++) {
@@ -181,7 +181,7 @@ public class EntityUmvuthanaRaptor extends EntityUmvuthana implements LeaderSuns
     }
 
     @Override
-    public boolean checkSpawnRules(LevelAccessor world, MobSpawnType reason) {
+    public boolean checkSpawnRules(LevelAccessor world, EntitySpawnReason reason) {
         List<LivingEntity> nearby = getEntityLivingBaseNearby(30, 10, 30, 30);
         for (LivingEntity nearbyEntity : nearby) {
             if (nearbyEntity instanceof EntityUmvuthanaRaptor || nearbyEntity instanceof Villager || nearbyEntity instanceof EntityUmvuthi || nearbyEntity instanceof Animal) {
@@ -199,7 +199,7 @@ public class EntityUmvuthanaRaptor extends EntityUmvuthana implements LeaderSuns
     @Override
     public void checkDespawn() {
         if (EventHooks.checkMobDespawn(this)) return;
-        if (this.level().getDifficulty() == Difficulty.PEACEFUL && this.shouldDespawnInPeaceful()) {
+        if (this.level().getDifficulty() == Difficulty.PEACEFUL && !this.getType().isAllowedInPeaceful()) {
             this.discard();
         } else if (!this.isPersistenceRequired() && !this.requiresCustomPersistence()) {
             Entity entity = this.level().getNearestPlayer(this, -1);

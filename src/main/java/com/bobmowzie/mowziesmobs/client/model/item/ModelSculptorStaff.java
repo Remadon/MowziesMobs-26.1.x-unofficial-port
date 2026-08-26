@@ -2,23 +2,24 @@ package com.bobmowzie.mowziesmobs.client.model.item;
 
 import com.bobmowzie.mowziesmobs.MMCommon;
 import com.bobmowzie.mowziesmobs.server.item.ItemSculptorStaff;
-import net.minecraft.resources.ResourceLocation;
-import software.bernie.geckolib.model.GeoModel;
+import com.geckolib.model.GeoModel;
+import com.geckolib.renderer.base.GeoRenderState;
+import net.minecraft.resources.Identifier;
 
 public class ModelSculptorStaff extends GeoModel<ItemSculptorStaff> {
 
     @Override
-    public ResourceLocation getModelResource(ItemSculptorStaff object) {
-        return ResourceLocation.fromNamespaceAndPath(MMCommon.MODID, "geo/sculptor_staff.geo.json");
+    public Identifier getModelResource(GeoRenderState renderState) {
+        return Identifier.fromNamespaceAndPath(MMCommon.MODID, "sculptor_staff");
     }
 
     @Override
-    public ResourceLocation getTextureResource(ItemSculptorStaff object) {
-        return ResourceLocation.fromNamespaceAndPath(MMCommon.MODID, "textures/item/sculptor_staff.png");
+    public Identifier getTextureResource(GeoRenderState renderState) {
+        return Identifier.fromNamespaceAndPath(MMCommon.MODID, "textures/item/sculptor_staff.png");
     }
 
     @Override
-    public ResourceLocation getAnimationResource(ItemSculptorStaff animatable) {
-        return ResourceLocation.fromNamespaceAndPath(MMCommon.MODID, "animations/sculptor.animation.json");
+    public Identifier getAnimationResource(ItemSculptorStaff animatable) {
+        return Identifier.fromNamespaceAndPath(MMCommon.MODID, "sculptor");
     }
 }

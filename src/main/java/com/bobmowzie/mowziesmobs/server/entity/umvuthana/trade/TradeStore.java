@@ -50,11 +50,11 @@ public final class TradeStore {
     }
 
     public static TradeStore deserialize(RegistryAccess access, CompoundTag compound) {
-        ListTag tradesList = compound.getList("trades", Tag.TAG_COMPOUND);
+        ListTag tradesList = compound.getListOrEmpty("trades");
         int totalWeight = 0;
         ImmutableSet.Builder<Trade> trades = new ImmutableSet.Builder<>();
         for (int i = 0; i < tradesList.size(); i++) {
-            Trade trade = Trade.deserialize(access, tradesList.getCompound(i));
+            Trade trade = Trade.deserialize(access, tradesList.getCompoundOrEmpty(i));
             if (trade != null) {
                 trades.add(trade);
                 totalWeight += trade.weight();

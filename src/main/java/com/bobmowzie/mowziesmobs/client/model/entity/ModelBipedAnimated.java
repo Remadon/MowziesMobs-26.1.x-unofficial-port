@@ -3,9 +3,13 @@ package com.bobmowzie.mowziesmobs.client.model.entity;
 import com.bobmowzie.mowziesmobs.client.model.tools.ModelPartMatrix;
 import net.minecraft.client.model.HumanoidModel;
 import net.minecraft.client.model.geom.ModelPart;
-import net.minecraft.world.entity.LivingEntity;
+import net.minecraft.client.renderer.entity.state.HumanoidRenderState;
 
-public class ModelBipedAnimated<T extends LivingEntity> extends HumanoidModel<T> {
+// PORTING NOTE: HumanoidModel's generic bound changed from `T extends LivingEntity` to `T extends HumanoidRenderState`
+// - see WroughtHelmModel for the same fix. Unlike PlayerModel (see ModelPlayerAnimated), HumanoidModel's own
+// head/hat/body/rightArm/leftArm/rightLeg/leftLeg fields are still plain mutable (non-final) ModelPart fields, so
+// the ModelPartMatrix-substitution technique below still works unchanged.
+public class ModelBipedAnimated<T extends HumanoidRenderState> extends HumanoidModel<T> {
     public ModelBipedAnimated(ModelPart root) {
         super(root);
         this.body = new ModelPartMatrix(body);
@@ -54,7 +58,7 @@ public class ModelBipedAnimated<T extends LivingEntity> extends HumanoidModel<T>
         }
     }
 
-    public static void setUseMatrixMode(HumanoidModel<? extends LivingEntity> bipedModel, boolean useMatrixMode) {
+    public static void setUseMatrixMode(HumanoidModel<? extends HumanoidRenderState> bipedModel, boolean useMatrixMode) {
         if (bipedModel.body instanceof ModelPartMatrix) {
             ((ModelPartMatrix) bipedModel.body).setUseMatrixMode(useMatrixMode);
             ((ModelPartMatrix) bipedModel.head).setUseMatrixMode(useMatrixMode);

@@ -3,29 +3,31 @@ package com.bobmowzie.mowziesmobs.client.model.armor;
 import com.bobmowzie.mowziesmobs.MMCommon;
 import com.bobmowzie.mowziesmobs.client.render.entity.RenderUmvuthi;
 import com.bobmowzie.mowziesmobs.server.item.ItemSolVisage;
-import net.minecraft.client.renderer.RenderType;
-import net.minecraft.resources.ResourceLocation;
-import software.bernie.geckolib.model.GeoModel;
+import com.geckolib.model.GeoModel;
+import com.geckolib.renderer.base.GeoRenderState;
+import net.minecraft.client.renderer.rendertype.RenderType;
+import net.minecraft.client.renderer.rendertype.RenderTypes;
+import net.minecraft.resources.Identifier;
 
 public class SolVisageModel extends GeoModel<ItemSolVisage> {
 
 	@Override
-	public ResourceLocation getModelResource(ItemSolVisage object) {
-		return ResourceLocation.fromNamespaceAndPath(MMCommon.MODID, "geo/sol_visage.geo.json");
+	public Identifier getModelResource(GeoRenderState renderState) {
+		return Identifier.fromNamespaceAndPath(MMCommon.MODID, "sol_visage");
 	}
 
 	@Override
-	public ResourceLocation getTextureResource(ItemSolVisage object) {
+	public Identifier getTextureResource(GeoRenderState renderState) {
 		return RenderUmvuthi.TEXTURE;
 	}
 
 	@Override
-	public ResourceLocation getAnimationResource(ItemSolVisage animatable) {
-		return ResourceLocation.fromNamespaceAndPath(MMCommon.MODID, "animations/sol_visage.animation.json");
+	public Identifier getAnimationResource(ItemSolVisage animatable) {
+		return Identifier.fromNamespaceAndPath(MMCommon.MODID, "sol_visage");
 	}
 
-	@Override
-	public RenderType getRenderType(ItemSolVisage animatable, ResourceLocation texture) {
-		return RenderType.entityCutoutNoCull(texture);
+	// PORTING NOTE: no longer @Override - see ModelRockSling for why (GeoModel#getRenderType removed in GeckoLib 5).
+	public RenderType getRenderType(ItemSolVisage animatable, Identifier texture) {
+		return RenderTypes.entityCutout(texture);
 	}
 }

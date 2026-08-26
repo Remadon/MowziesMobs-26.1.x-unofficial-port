@@ -61,8 +61,11 @@ public class BlockGrottol extends HorizontalDirectionalBlock {
         return super.canSurvive(state, world, pos) && hasSupport(world, pos);
     }
 
+    // PORTING NOTE (1.21.1 -> 26.1.2): BlockBehaviour#neighborChanged's fromPos parameter was replaced with a
+    // @Nullable Orientation (confirmed against real 26.1.2 BlockBehaviour source) - unused here either way, since
+    // this only re-checks support at this block's own position regardless of which neighbor changed.
     @Override
-    public void neighborChanged(BlockState state, Level world, BlockPos pos, Block blockIn, BlockPos fromPos, boolean isMoving) {
+    public void neighborChanged(BlockState state, Level world, BlockPos pos, Block blockIn, @Nullable net.minecraft.world.level.redstone.Orientation orientation, boolean isMoving) {
         if (hasSupport(world, pos)) {
             world.removeBlock(pos, false);
         }

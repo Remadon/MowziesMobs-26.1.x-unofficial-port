@@ -10,6 +10,8 @@ import net.minecraft.core.Direction;
 import net.minecraft.core.particles.ParticleTypes;
 import net.minecraft.nbt.CompoundTag;
 import net.minecraft.network.RegistryFriendlyByteBuf;
+import net.minecraft.world.level.storage.ValueInput;
+import net.minecraft.world.level.storage.ValueOutput;
 import net.minecraft.network.protocol.game.ClientboundTeleportEntityPacket;
 import net.minecraft.network.syncher.EntityDataAccessor;
 import net.minecraft.network.syncher.EntityDataSerializers;
@@ -55,7 +57,11 @@ public class EntitySunstrike extends Entity implements IEntityWithComplexSpawn {
 
     public EntitySunstrike(EntityType<? extends EntitySunstrike> type, Level world) {
         super(type, world);
-        noCulling = true;
+        // FIXME 26.1.2 port: Entity#noCulling was removed entirely (only Display entities have their own unrelated
+        // private noCulling field now). Render culling is now controlled client-side via
+        // EntityRenderer#getBoundingBoxForCulling(T)/shouldRenderAtSqrDistance on this entity's renderer, which is
+        // out of server/entity/** scope - the "always render regardless of bounding box" behavior this field used
+        // to provide needs to be re-added there (client/render/entity/RenderSunstrike.java or equivalent).
     }
 
     public EntitySunstrike(EntityType<? extends EntitySunstrike> type, Level world, LivingEntity caster, int x, int y, int z) {
@@ -68,6 +74,12 @@ public class EntitySunstrike extends Entity implements IEntityWithComplexSpawn {
     protected void defineSynchedData(@NotNull SynchedEntityData.Builder builder) {
         builder.define(VARIANT_LEAST, 0);
         builder.define(VARIANT_MOST, 0);
+    }
+
+    @Override
+    public boolean hurtServer(net.minecraft.server.level.ServerLevel level, net.minecraft.world.damagesource.DamageSource source, float amount) {
+        // NOTE 26.1.2 port: see EntityMagicEffect#hurtServer for context on this required override.
+        return false;
     }
 
     public float getStrikeTime(float delta) {
@@ -135,7 +147,7 @@ public class EntitySunstrike extends Entity implements IEntityWithComplexSpawn {
         super.tick();
         prevStrikeTime = strikeTime;
 
-        if (level().isClientSide) {
+        if (level().isClientSide()) {
             if (strikeTime == 0) {
                 MMCommon.PROXY.playSunstrikeSound(this);
             } else if (strikeTime < STRIKE_EXPLOSION - 10) {
@@ -183,14 +195,14 @@ public class EntitySunstrike extends Entity implements IEntityWithComplexSpawn {
                     this.setPos(getX(), hitResult.getBlockPos().getY() + 1.0625F, getZ());
                 }
                 if (this.level() instanceof ServerLevel) {
-                    ((ServerLevel) this.level()).getChunkSource().broadcast(this, new ClientboundTeleportEntityPacket(this));
+                    ((ServerLevel) this.level()).getChunkSource().sendToTrackingPlayers(this, ClientboundTeleportEntityPacket.teleport(this.getId(), net.minecraft.world.entity.PositionMoveRotation.of(this), java.util.Set.of(), this.onGround()));
                 }
             }
         }
     }
 
     public void damageEntityLivingBaseNearby(double radius) {
-        AABB region = new AABB(getX() - radius, getY() - 0.5, getZ() - radius, getX() + radius, this.level().getMaxBuildHeight() + 20, getZ() + radius);
+        AABB region = new AABB(getX() - radius, getY() - 0.5, getZ() - radius, getX() + radius, this.level().getMaxY() + 20, getZ() + radius);
         List<Entity> entities = level().getEntities(this, region);
         double radiusSq = radius * radius;
         for (Entity entity : entities) {
@@ -212,8 +224,8 @@ public class EntitySunstrike extends Entity implements IEntityWithComplexSpawn {
                     damageFire *= ConfigHandler.COMMON.TOOLS_AND_ABILITIES.SUNS_BLESSING.sunsBlessingAttackMultiplier.get();
                     damageMob *= ConfigHandler.COMMON.TOOLS_AND_ABILITIES.SUNS_BLESSING.sunsBlessingAttackMultiplier.get();
                 }
-                if (entity.hurt(damageSources().mobProjectile(this, caster), damageMob)) entity.invulnerableTime = 0;
-                if (entity.hurt(damageSources().onFire(), damageFire)) {
+                if (entity.hurtOrSimulate(damageSources().mobProjectile(this, caster), damageMob)) entity.invulnerableTime = 0;
+                if (entity.hurtOrSimulate(damageSources().onFire(), damageFire)) {
                     entity.igniteForSeconds(3);
                 }
             }
@@ -260,20 +272,20 @@ public class EntitySunstrike extends Entity implements IEntityWithComplexSpawn {
 
     private HitResult rayTrace(EntitySunstrike entity) {
         Vec3 startPos = new Vec3(entity.getX(), entity.getY(), entity.getZ());
-        Vec3 endPos = new Vec3(entity.getX(), level().getMinBuildHeight(), entity.getZ());
+        Vec3 endPos = new Vec3(entity.getX(), level().getMinY(), entity.getZ());
         return entity.level().clip(new ClipContext(startPos, endPos, ClipContext.Block.COLLIDER, ClipContext.Fluid.NONE, this));
     }
 
     @Override
-    public void addAdditionalSaveData(CompoundTag compound) {
-        compound.putInt("strikeTime", strikeTime);
-        compound.putLong("variant", getVariant());
+    public void addAdditionalSaveData(ValueOutput output) {
+        output.putInt("strikeTime", strikeTime);
+        output.putLong("variant", getVariant());
     }
 
     @Override
-    public void readAdditionalSaveData(CompoundTag compound) {
-        setStrikeTime(compound.getInt("strikeTime"));
-        setVariant(compound.getLong("variant"));
+    public void readAdditionalSaveData(ValueInput input) {
+        setStrikeTime(input.getIntOr("strikeTime", 0));
+        setVariant(input.getLongOr("variant", 0));
     }
 
     @Override

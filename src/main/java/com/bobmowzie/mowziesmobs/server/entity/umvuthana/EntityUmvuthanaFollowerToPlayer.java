@@ -27,12 +27,15 @@ import net.minecraft.world.entity.player.Player;
 import net.minecraft.world.item.ItemStack;
 import net.minecraft.world.level.Level;
 import net.minecraft.world.level.block.state.BlockState;
+import net.minecraft.world.level.storage.ValueInput;
+import net.minecraft.world.level.storage.ValueOutput;
 import net.minecraft.world.level.storage.loot.BuiltInLootTables;
 import net.minecraft.world.level.storage.loot.LootTable;
 import net.minecraft.world.phys.Vec3;
 import org.jetbrains.annotations.NotNull;
 
 import javax.annotation.Nullable;
+import java.util.Optional;
 
 public class EntityUmvuthanaFollowerToPlayer extends EntityUmvuthanaFollower<Player> {
     private static final EntityDataAccessor<ItemStack> MASK_STORED = SynchedEntityData.defineId(EntityUmvuthanaFollowerToPlayer.class, EntityDataSerializers.ITEM_STACK);
@@ -45,7 +48,7 @@ public class EntityUmvuthanaFollowerToPlayer extends EntityUmvuthanaFollower<Pla
     public EntityUmvuthanaFollowerToPlayer(EntityType<? extends EntityUmvuthanaFollowerToPlayer> type, Level world, Player leader) {
         super(type, world, Player.class, leader);
         xpReward = 0;
-        if (world.isClientSide) {
+        if (world.isClientSide()) {
             feetPos = new Vec3[]{new Vec3(0, 0, 0)};
         }
     }
@@ -80,7 +83,7 @@ public class EntityUmvuthanaFollowerToPlayer extends EntityUmvuthanaFollower<Pla
             deactivate();
         }
         super.tick();
-        if (level().isClientSide && feetPos != null && feetPos.length > 0 && active) {
+        if (level().isClientSide() && feetPos != null && feetPos.length > 0 && active) {
             feetPos[0] = position().add(0, 0.05f, 0);
             if (tickCount % 10 == 0) AdvancedParticleBase.spawnParticle(level(), ParticleHandler.RING2, feetPos[0].x(), feetPos[0].y(), feetPos[0].z(), 0, 0, 0, false, 0, Math.PI/2f, 0, 0, 1.5F, 1, 223 / 255f, 66 / 255f, 1, 1, 15, true, false, new ParticleComponent[]{
                     new ParticleComponent.PinLocation(feetPos),
@@ -152,11 +155,6 @@ public class EntityUmvuthanaFollowerToPlayer extends EntityUmvuthanaFollower<Pla
         return false;
     }
 
-    @Override
-    protected @NotNull ResourceKey<LootTable> getDefaultLootTable() {
-        return BuiltInLootTables.EMPTY;
-    }
-
     public boolean isTeleportFriendlyBlock(int x, int z, int y, int xOffset, int zOffset)
     {
         BlockPos blockpos = new BlockPos(x + xOffset, y - 1, z + zOffset);
@@ -179,17 +177,16 @@ public class EntityUmvuthanaFollowerToPlayer extends EntityUmvuthanaFollower<Pla
     }
 
     @Override
-    public void readAdditionalSaveData(CompoundTag compound) {
-        super.readAdditionalSaveData(compound);
-        CompoundTag compoundnbt = compound.getCompound("storedMask");
-        this.setStoredMask(ItemStack.parse(registryAccess(), compoundnbt).orElse(ItemStack.EMPTY));
+    public void readAdditionalSaveData(ValueInput input) {
+        super.readAdditionalSaveData(input);
+        this.setStoredMask(input.read("storedMask", ItemStack.CODEC).orElse(ItemStack.EMPTY));
     }
 
     @Override
-    public void addAdditionalSaveData(CompoundTag compound) {
-        super.addAdditionalSaveData(compound);
+    public void addAdditionalSaveData(ValueOutput output) {
+        super.addAdditionalSaveData(output);
         if (!this.getStoredMask().isEmpty()) {
-            compound.put("storedMask", this.getStoredMask().save(registryAccess(), new CompoundTag()));
+            output.store("storedMask", ItemStack.CODEC, this.getStoredMask());
         }
     }
 }

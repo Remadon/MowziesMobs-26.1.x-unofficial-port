@@ -8,7 +8,7 @@ import net.minecraft.core.registries.Registries;
 import net.minecraft.network.codec.ByteBufCodecs;
 import net.minecraft.network.codec.StreamCodec;
 import net.minecraft.network.protocol.common.custom.CustomPacketPayload;
-import net.minecraft.resources.ResourceLocation;
+import net.minecraft.resources.Identifier;
 import net.minecraft.world.entity.LivingEntity;
 import net.neoforged.neoforge.network.handling.IPayloadContext;
 import org.jetbrains.annotations.NotNull;
@@ -16,26 +16,28 @@ import org.jetbrains.annotations.NotNull;
 import java.util.UUID;
 
 /** Set entity to 'null' to remove boss bar */
-public record MessageUpdateBossBar(UUID bossId, boolean remove, ResourceLocation registryName) implements CustomPacketPayload {
-    public static final CustomPacketPayload.Type<MessageUpdateBossBar> TYPE = new CustomPacketPayload.Type<>(ResourceLocation.fromNamespaceAndPath(MMCommon.MODID, "message_update_boss_bar"));
+public record MessageUpdateBossBar(UUID bossId, boolean remove, Identifier registryName) implements CustomPacketPayload {
+    public static final CustomPacketPayload.Type<MessageUpdateBossBar> TYPE = new CustomPacketPayload.Type<>(Identifier.fromNamespaceAndPath(MMCommon.MODID, "message_update_boss_bar"));
     public static final StreamCodec<ByteBuf, MessageUpdateBossBar> STREAM_CODEC = StreamCodec.composite(
             UUIDUtil.STREAM_CODEC,
             MessageUpdateBossBar::bossId,
             ByteBufCodecs.BOOL,
             MessageUpdateBossBar::remove,
-            ResourceLocation.STREAM_CODEC,
+            Identifier.STREAM_CODEC,
             MessageUpdateBossBar::registryName,
             MessageUpdateBossBar::new
     );
 
-    private static final ResourceLocation NULL = ResourceLocation.fromNamespaceAndPath(MMCommon.MODID, "null");
+    private static final Identifier NULL = Identifier.fromNamespaceAndPath(MMCommon.MODID, "null");
 
     public static MessageUpdateBossBar fromEntity(UUID bossId, LivingEntity entity) {
         if (entity == null) {
             return new MessageUpdateBossBar(bossId, true, NULL);
         }
 
-        ResourceLocation registryName = entity.level().registryAccess().registryOrThrow(Registries.ENTITY_TYPE).getKey(entity.getType());
+        // PORTING NOTE (1.21.1 -> 26.1.2): RegistryAccess#registryOrThrow was renamed to lookupOrThrow (confirmed
+        // against real 26.1.2 RegistryAccess source).
+        Identifier registryName = entity.level().registryAccess().lookupOrThrow(Registries.ENTITY_TYPE).getKey(entity.getType());
         return new MessageUpdateBossBar(bossId, false, registryName);
     }
 

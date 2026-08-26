@@ -6,12 +6,12 @@ import com.bobmowzie.mowziesmobs.client.model.tools.geckolib.MowzieGeoModel;
 import com.bobmowzie.mowziesmobs.client.render.entity.RenderUmvuthi;
 import com.bobmowzie.mowziesmobs.server.entity.umvuthana.EntityUmvuthi;
 import net.minecraft.core.Direction;
-import net.minecraft.resources.ResourceLocation;
+import net.minecraft.resources.Identifier;
 import net.minecraft.util.Mth;
 import org.apache.commons.lang3.tuple.Triple;
-import software.bernie.geckolib.animation.AnimationState;
-import software.bernie.geckolib.constant.DataTickets;
-import software.bernie.geckolib.model.data.EntityModelData;
+import com.geckolib.animation.state.AnimationTest;
+import com.geckolib.constant.DataTickets;
+import com.geckolib.renderer.base.GeoRenderState;
 
 import java.util.ArrayList;
 import java.util.List;
@@ -22,28 +22,28 @@ public class ModelUmvuthi extends MowzieGeoModel<EntityUmvuthi> {
     }
 
     @Override
-    public ResourceLocation getModelResource(EntityUmvuthi object) {
-        return ResourceLocation.fromNamespaceAndPath(MMCommon.MODID, "geo/umvuthi.geo.json");
+    public Identifier getModelResource(GeoRenderState renderState) {
+        return Identifier.fromNamespaceAndPath(MMCommon.MODID, "umvuthi");
     }
 
     @Override
-    public ResourceLocation getTextureResource(EntityUmvuthi object) {
+    public Identifier getTextureResource(GeoRenderState renderState) {
         return RenderUmvuthi.TEXTURE;
     }
 
     @Override
-    public ResourceLocation getAnimationResource(EntityUmvuthi object) {
-        return ResourceLocation.fromNamespaceAndPath(MMCommon.MODID, "animations/umvuthi.animation.json");
+    public Identifier getAnimationResource(EntityUmvuthi object) {
+        return Identifier.fromNamespaceAndPath(MMCommon.MODID, "umvuthi");
     }
 
-    @Override
-    public void setCustomAnimations(EntityUmvuthi entity, long instanceId, AnimationState<EntityUmvuthi> animationState) {
-        float frame = entity.frame + animationState.getPartialTick();
+    // PORTING NOTE: no longer @Override - see MowzieGeoModel's class javadoc.
+    public void setCustomAnimations(EntityUmvuthi entity, long instanceId, AnimationTest<EntityUmvuthi> animationState) {
+        float frame = entity.frame + animationState.renderState().getPartialTick();
 
         MowzieGeoBone rightThigh = getMowzieBone("rightThigh");
         MowzieGeoBone leftThigh = getMowzieBone("leftThigh");
 
-        float liftLegs = entity.legsUp.getAnimationProgressSinSqrt(animationState.getPartialTick());
+        float liftLegs = entity.legsUp.getAnimationProgressSinSqrt(animationState.renderState().getPartialTick());
         leftThigh.addRotX(1f * liftLegs);
         rightThigh.addRotX(1f * liftLegs);
         leftThigh.addRotZ(1.5f * liftLegs);
@@ -57,9 +57,9 @@ public class ModelUmvuthi extends MowzieGeoModel<EntityUmvuthi> {
             MowzieGeoBone head = getMowzieBone("head");
             MowzieGeoBone[] lookPieces = new MowzieGeoBone[] { neck1, neck2, head };
 
-            EntityModelData entityData = animationState.getData(DataTickets.ENTITY_MODEL_DATA);
-            float headYaw = Mth.wrapDegrees(entityData.netHeadYaw());
-            float headPitch = Mth.wrapDegrees(entityData.headPitch());
+            // PORTING NOTE: EntityModelData/DataTickets.ENTITY_MODEL_DATA removed in GeckoLib 5 - see ModelSculptor.
+            float headYaw = Mth.wrapDegrees(animationState.getData(DataTickets.ENTITY_YAW) - animationState.getData(DataTickets.ENTITY_BODY_YAW));
+            float headPitch = Mth.wrapDegrees(animationState.getData(DataTickets.ENTITY_PITCH));
             float maxYaw = 140f;
             headYaw = Mth.clamp(headYaw, -maxYaw, maxYaw);
             for (MowzieGeoBone bone : lookPieces) {

@@ -27,6 +27,7 @@ import net.minecraft.server.level.ServerLevel;
 import net.minecraft.util.Mth;
 import net.minecraft.world.InteractionHand;
 import net.minecraft.world.damagesource.DamageSource;
+import net.minecraft.world.entity.EquipmentSlot;
 import net.minecraft.world.entity.LivingEntity;
 import net.minecraft.world.entity.player.Player;
 import net.minecraft.world.item.ItemStack;
@@ -35,11 +36,11 @@ import net.minecraft.world.level.block.state.BlockState;
 import net.minecraft.world.phys.AABB;
 import net.minecraft.world.phys.Vec3;
 import net.neoforged.neoforge.event.entity.living.LivingFallEvent;
-import software.bernie.geckolib.animatable.GeoEntity;
-import software.bernie.geckolib.animatable.GeoItem;
-import software.bernie.geckolib.animation.AnimationState;
-import software.bernie.geckolib.animation.PlayState;
-import software.bernie.geckolib.animation.RawAnimation;
+import com.geckolib.animatable.GeoEntity;
+import com.geckolib.animatable.GeoItem;
+import com.geckolib.animation.state.AnimationTest;
+import com.geckolib.animation.object.PlayState;
+import com.geckolib.animation.RawAnimation;
 
 import java.util.List;
 
@@ -111,12 +112,12 @@ public class TunnelingAbility extends PlayerAbility implements IGeomancyRumbler 
         if (stack.getItem() == ItemHandler.EARTHREND_GAUNTLET.get()) {
             InteractionHand handIn = getUser().getUsedItemHand();
             if (stack.getDamageValue() + 5 < stack.getMaxDamage()) {
-                stack.hurtAndBreak(5, getUser(), LivingEntity.getSlotForHand(handIn));
+                stack.hurtAndBreak(5, getUser(), handIn.asEquipmentSlot());
                 return true;
             }
             else {
                 if (ConfigHandler.COMMON.TOOLS_AND_ABILITIES.EARTHREND_GAUNTLET.breakable.get()) {
-                    stack.hurtAndBreak(5, getUser(), LivingEntity.getSlotForHand(handIn));
+                    stack.hurtAndBreak(5, getUser(), handIn.asEquipmentSlot());
                 }
                 return false;
             }
@@ -138,12 +139,15 @@ public class TunnelingAbility extends PlayerAbility implements IGeomancyRumbler 
         AbilityData data = DataHandler.getData(getUser(), DataHandler.ABILITY_DATA);
         if (data.getActiveAbility() == null || (data.getActiveAbility().getAbilityType() != AbilityHandler.SPAWN_PILLAR_ABILITY && data.getActiveAbility().getAbilityType() != AbilityHandler.TUNNELING_ABILITY)) {
             Player player = (Player) getUser();
-            for (ItemStack stack : player.getInventory().items) {
+            // PORTING NOTE (1.21.1 -> 26.1.2): Inventory#items is now private, and the separate Inventory#offhand
+            // NonNullList no longer exists at all - armor/offhand moved to a distinct EntityEquipment field on
+            // Inventory. getNonEquipmentItems() is the public accessor for the old `items` (36 main+hotbar slots),
+            // and getItemBySlot(EquipmentSlot.OFFHAND) is the direct replacement for the old single-slot `offhand`
+            // list iteration.
+            for (ItemStack stack : player.getInventory().getNonEquipmentItems()) {
                 restoreGauntlet(stack);
             }
-            for (ItemStack stack : player.getInventory().offhand) {
-                restoreGauntlet(stack);
-            }
+            restoreGauntlet(player.getItemBySlot(EquipmentSlot.OFFHAND));
         }
     }
 
@@ -194,7 +198,7 @@ public class TunnelingAbility extends PlayerAbility implements IGeomancyRumbler 
                             BlockState blockState = getUser().level().getBlockState(pos);
                             if (EffectGeomancy.checkBlock(blockState, MMBlockTags.GEOMANCY_TUNNELABLE) && blockState.getBlock() != Blocks.BEDROCK) {
                                 justDug = blockState;
-                                if (!getLevel().isClientSide) {
+                                if (!getLevel().isClientSide()) {
                                     EntityBlockSwapper.EntityBlockSwapperTunneling swapper = new EntityBlockSwapper.EntityBlockSwapperTunneling(EntityHandler.BLOCK_SWAPPER_TUNNELING.get(), getLevel(), pos, Blocks.AIR.defaultBlockState(), 15, false, false, getUser());
                                     getLevel().addFreshEntity(swapper);
                                 }
@@ -208,7 +212,7 @@ public class TunnelingAbility extends PlayerAbility implements IGeomancyRumbler 
         if (!prevUnderground && underground) {
             timeUnderground = 0;
             getUser().playSound(MMSounds.EFFECT_GEOMANCY_BREAK_MEDIUM.get(rand.nextInt(3)).get(), 1f, 0.9f + rand.nextFloat() * 0.1f);
-            if (getUser().level().isClientSide)
+            if (getUser().level().isClientSide())
                 AdvancedParticleBase.spawnParticle(getUser().level(), ParticleHandler.RING2, (float) getUser().getX(), (float) getUser().getY() + 0.02f, (float) getUser().getZ(), 0, 0, 0, false, 0, Math.PI/2f, 0, 0, 3.5F, 0.83f, 1, 0.39f, 1, 1, 10, true, true, new ParticleComponent[]{
                         new ParticleComponent.PropertyControl(ParticleComponent.PropertyControl.EnumParticleProperty.ALPHA, ParticleComponent.KeyTrack.startAndEnd(1f, 0f), false),
                         new ParticleComponent.PropertyControl(ParticleComponent.PropertyControl.EnumParticleProperty.SCALE, ParticleComponent.KeyTrack.startAndEnd(10f, 30f), false)
@@ -218,7 +222,7 @@ public class TunnelingAbility extends PlayerAbility implements IGeomancyRumbler 
         if (prevUnderground && !underground) {
             timeAboveGround = 0;
             getUser().playSound(MMSounds.EFFECT_GEOMANCY_BREAK.get(), 1f, 0.9f + rand.nextFloat() * 0.1f);
-            if (getUser().level().isClientSide)
+            if (getUser().level().isClientSide())
                 AdvancedParticleBase.spawnParticle(getUser().level(), ParticleHandler.RING2, (float) getUser().getX(), (float) getUser().getY() + 0.02f, (float) getUser().getZ(), 0, 0, 0, false, 0, Math.PI/2f, 0, 0, 3.5F, 0.83f, 1, 0.39f, 1, 1, 10, true, true, new ParticleComponent[]{
                         new ParticleComponent.PropertyControl(ParticleComponent.PropertyControl.EnumParticleProperty.ALPHA, ParticleComponent.KeyTrack.startAndEnd(1f, 0f), false),
                         new ParticleComponent.PropertyControl(ParticleComponent.PropertyControl.EnumParticleProperty.SCALE, ParticleComponent.KeyTrack.startAndEnd(10f, 30f), false)
@@ -270,15 +274,15 @@ public class TunnelingAbility extends PlayerAbility implements IGeomancyRumbler 
     private static final RawAnimation DRILL_ANIM = RawAnimation.begin().thenLoop("tunneling_drill");
 
     @Override
-    public <E extends GeoEntity> PlayState animationPredicate(AnimationState<E> e, GeckoPlayer.Perspective perspective) {
-        e.getController().transitionLength(4);
+    public <E extends GeoEntity> PlayState animationPredicate(AnimationTest<E> e, GeckoPlayer.Perspective perspective) {
+        e.controller().setTransitionTicks(4);
         if (perspective == GeckoPlayer.Perspective.THIRD_PERSON) {
             float yMotionThreshold = getUser() == MMCommon.PROXY.getLocalPlayer() ? 1 : 2;
             if (!underground && getUser().getUseItem().getItem() != ItemHandler.EARTHREND_GAUNTLET.get() && getUser().getDeltaMovement().y() < yMotionThreshold) {
-                e.getController().setAnimation(FALL_ANIM);
+                e.controller().setAnimation(FALL_ANIM);
             }
             else {
-                e.getController().setAnimation(DRILL_ANIM);
+                e.controller().setAnimation(DRILL_ANIM);
             }
         }
         return PlayState.CONTINUE;
@@ -324,7 +328,7 @@ public class TunnelingAbility extends PlayerAbility implements IGeomancyRumbler 
         super.readNBT(nbt);
         if (isUsing()) {
             CompoundTag compound = (CompoundTag) nbt;
-            whichHand = InteractionHand.values()[compound.getInt("whichHand")];
+            whichHand = InteractionHand.values()[compound.getIntOr("whichHand", 0)];
         }
     }
 

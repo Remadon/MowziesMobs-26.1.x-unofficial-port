@@ -12,8 +12,9 @@ import net.minecraft.world.InteractionResult;
 import net.minecraft.world.entity.Entity;
 import net.minecraft.world.entity.LivingEntity;
 import net.minecraft.world.entity.Mob;
-import net.minecraft.world.entity.MobSpawnType;
+import net.minecraft.world.entity.EntitySpawnReason;
 import net.minecraft.world.entity.player.Player;
+import net.minecraft.world.item.component.TooltipDisplay;
 import net.minecraft.world.item.Item;
 import net.minecraft.world.item.ItemStack;
 import net.minecraft.world.item.TooltipFlag;
@@ -22,6 +23,7 @@ import net.minecraft.world.level.Level;
 import net.minecraft.world.level.ServerLevelAccessor;
 
 import java.util.List;
+import java.util.function.Consumer;
 
 public class ItemFoliaathSeed extends Item {
     public ItemFoliaathSeed(Item.Properties properties) {
@@ -30,11 +32,11 @@ public class ItemFoliaathSeed extends Item {
 
     public Entity spawnCreature(ServerLevelAccessor world, Mob entity, double x, double y, double z) {
         if (entity != null) {
-            entity.moveTo(x + 0.5, y, z + 0.5, world.getLevel().random.nextFloat() * 360 - 180, 0);
+            entity.snapTo(x + 0.5, y, z + 0.5, world.getLevel().getRandom().nextFloat() * 360 - 180, 0);
             entity.yHeadRot = entity.getYRot();
             entity.yBodyRot = entity.getYRot();
-            entity.finalizeSpawn(world, world.getCurrentDifficultyAt(entity.blockPosition()), MobSpawnType.MOB_SUMMONED, null);
-            if (!entity.checkSpawnRules(world, MobSpawnType.MOB_SUMMONED)) {
+            entity.finalizeSpawn(world, world.getCurrentDifficultyAt(entity.blockPosition()), EntitySpawnReason.MOB_SUMMONED, null);
+            if (!entity.checkSpawnRules(world, EntitySpawnReason.MOB_SUMMONED)) {
                 return null;
             }
             world.addFreshEntity(entity);
@@ -51,7 +53,7 @@ public class ItemFoliaathSeed extends Item {
         ItemStack stack = player.getItemInHand(hand);
         BlockPos pos = context.getClickedPos();
         Level world = context.getLevel();
-        if (world.isClientSide) {
+        if (world.isClientSide()) {
             return InteractionResult.SUCCESS;
         } else if (!player.mayUseItemAt(pos.relative(facing), facing, stack)) {
             return InteractionResult.FAIL;
@@ -69,11 +71,11 @@ public class ItemFoliaathSeed extends Item {
     }
 
     @Override
-    public void appendHoverText(ItemStack stack, TooltipContext context, List<Component> tooltip, TooltipFlag flagIn) {
-        super.appendHoverText(stack, context, tooltip, flagIn);
-        tooltip.add(Component.translatable(getDescriptionId() + ".text.0").setStyle(ItemHandler.TOOLTIP_STYLE));
-        tooltip.add(Component.translatable(getDescriptionId() + ".text.1").setStyle(ItemHandler.TOOLTIP_STYLE));
-        tooltip.add(Component.translatable(getDescriptionId() + ".text.2").setStyle(ItemHandler.TOOLTIP_STYLE));
-        tooltip.add(Component.translatable(getDescriptionId() + ".text.3").setStyle(ItemHandler.TOOLTIP_STYLE));
+    public void appendHoverText(ItemStack stack, TooltipContext context, TooltipDisplay display, Consumer<Component> tooltip, TooltipFlag flagIn) {
+        super.appendHoverText(stack, context, display, tooltip, flagIn);
+        tooltip.accept(Component.translatable(getDescriptionId() + ".text.0").setStyle(ItemHandler.TOOLTIP_STYLE));
+        tooltip.accept(Component.translatable(getDescriptionId() + ".text.1").setStyle(ItemHandler.TOOLTIP_STYLE));
+        tooltip.accept(Component.translatable(getDescriptionId() + ".text.2").setStyle(ItemHandler.TOOLTIP_STYLE));
+        tooltip.accept(Component.translatable(getDescriptionId() + ".text.3").setStyle(ItemHandler.TOOLTIP_STYLE));
     }
 }

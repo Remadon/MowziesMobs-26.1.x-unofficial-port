@@ -9,15 +9,15 @@ import com.bobmowzie.mowziesmobs.server.capability.DataHandler;
 import net.minecraft.client.Minecraft;
 import net.minecraft.client.model.HumanoidModel;
 import net.minecraft.client.player.AbstractClientPlayer;
-import net.minecraft.resources.ResourceLocation;
+import net.minecraft.resources.Identifier;
 import net.minecraft.util.Mth;
 import net.minecraft.world.InteractionHand;
 import net.minecraft.world.entity.HumanoidArm;
 import net.minecraft.world.entity.player.Player;
-import software.bernie.geckolib.cache.object.GeoBone;
+import com.geckolib.renderer.base.GeoRenderState;
 
 public class ModelGeckoBiped extends MowzieGeoModel<GeckoPlayer> {
-	private ResourceLocation textureLocation;
+	private Identifier textureLocation;
 
 	public boolean isSitting = false;
 	public boolean isChild = true;
@@ -31,22 +31,22 @@ public class ModelGeckoBiped extends MowzieGeoModel<GeckoPlayer> {
 	protected boolean useSmallArms = false;
 	
 	@Override
-	public ResourceLocation getAnimationResource(GeckoPlayer animatable) {
-		return ResourceLocation.fromNamespaceAndPath(MMCommon.MODID, "animations/animated_player.animation.json");
+	public Identifier getAnimationResource(GeckoPlayer animatable) {
+		return Identifier.fromNamespaceAndPath(MMCommon.MODID, "animated_player");
 	}
 
 	@Override
-	public ResourceLocation getModelResource(GeckoPlayer animatable) {
-		return ResourceLocation.fromNamespaceAndPath(MMCommon.MODID, "geo/animated_player.geo.json");
+	public Identifier getModelResource(GeoRenderState renderState) {
+		return Identifier.fromNamespaceAndPath(MMCommon.MODID, "animated_player");
 	}
 
 	@Override
-	public ResourceLocation getTextureResource(GeckoPlayer animatable) {
+	public Identifier getTextureResource(GeoRenderState renderState) {
 		return textureLocation;
 	}
 
 	public void setTextureFromPlayer(AbstractClientPlayer player) {
-		this.textureLocation = player.getSkin().texture();
+		this.textureLocation = player.getSkin().body().texturePath();
 	}
 
 	public void setUseSmallArms(boolean useSmallArms) {
@@ -101,7 +101,7 @@ public class ModelGeckoBiped extends MowzieGeoModel<GeckoPlayer> {
 		float yaw = 0;
 		float pitch = 0;
 		float roll = 0;
-		GeoBone parent = neck.getParent();
+		MowzieGeoBone parent = neck.getParent();
 		while (parent != null) {
 			pitch += parent.getRotX();
 			yaw += parent.getRotY();
@@ -136,8 +136,8 @@ public class ModelGeckoBiped extends MowzieGeoModel<GeckoPlayer> {
 
 		float headLookAmount = getControllerValueInverted("HeadLookController");
 		float armLookAmount = 1f - getControllerValueInverted("ArmPitchController");
-		float armLookAmountRight = getBone("ArmPitchController").get().getPosY();
-		float armLookAmountLeft = getBone("ArmPitchController").get().getPosZ();
+		float armLookAmountRight = getMowzieBone("ArmPitchController").getPosY();
+		float armLookAmountLeft = getMowzieBone("ArmPitchController").getPosZ();
 		boolean flag = entityIn.getFallFlyingTicks() > 4;
 		boolean flag1 = entityIn.isVisuallySwimming();
 		this.bipedHead().addRotY(headLookAmount * -netHeadYaw * ((float)Math.PI / 180F));
@@ -170,8 +170,8 @@ public class ModelGeckoBiped extends MowzieGeoModel<GeckoPlayer> {
 
 		float legWalkAmount = getControllerValueInverted("LegWalkController");
 		float armSwingAmount = getControllerValueInverted("ArmSwingController");
-		float armSwingAmountRight = 1.0f - getBone("ArmSwingController").get().getPosY();
-		float armSwingAmountLeft = 1.0f - getBone("ArmSwingController").get().getPosZ();
+		float armSwingAmountRight = 1.0f - getMowzieBone("ArmSwingController").getPosY();
+		float armSwingAmountLeft = 1.0f - getMowzieBone("ArmSwingController").getPosZ();
 		this.bipedRightArm().addRotX(armSwingAmount * armSwingAmountRight *Mth.cos(limbSwing * 0.6662F + (float)Math.PI) * 2.0F * limbSwingAmount * 0.5F / f);
 		this.bipedLeftArm().addRotX(armSwingAmount * armSwingAmountLeft * Mth.cos(limbSwing * 0.6662F) * 2.0F * limbSwingAmount * 0.5F / f);
 		this.bipedRightLeg().addRotX(legWalkAmount * Mth.cos(limbSwing * 0.6662F) * 1.4F * limbSwingAmount / f);

@@ -41,7 +41,7 @@ import net.minecraft.network.syncher.EntityDataAccessor;
 import net.minecraft.network.syncher.EntityDataSerializers;
 import net.minecraft.network.syncher.SynchedEntityData;
 import net.minecraft.resources.ResourceKey;
-import net.minecraft.resources.ResourceLocation;
+import net.minecraft.resources.Identifier;
 import net.minecraft.sounds.SoundEvent;
 import net.minecraft.tags.BlockTags;
 import net.minecraft.util.Mth;
@@ -76,9 +76,18 @@ import net.minecraft.world.phys.Vec3;
 import net.minecraft.world.phys.shapes.VoxelShape;
 import org.jetbrains.annotations.NotNull;
 import org.joml.Vector3d;
-import software.bernie.geckolib.animatable.GeoEntity;
-import software.bernie.geckolib.animation.*;
-import software.bernie.geckolib.animation.AnimationState;
+import com.geckolib.animatable.GeoEntity;
+import com.geckolib.animatable.manager.AnimatableManager;
+import com.geckolib.animation.AnimationController;
+import com.geckolib.animation.AnimationProcessor;
+import com.geckolib.animation.RawAnimation;
+import com.geckolib.animation.object.PlayState;
+import com.geckolib.animation.state.AnimationTest;
+import com.geckolib.cache.animation.Animation;
+import com.geckolib.animation.object.LoopType;
+import net.minecraft.server.level.ServerLevel;
+import net.minecraft.world.level.storage.ValueInput;
+import net.minecraft.world.level.storage.ValueOutput;
 
 import javax.annotation.Nullable;
 import java.util.*;
@@ -93,10 +102,10 @@ public abstract class EntityElokosa extends MowzieGeckoEntity implements Enemy {
     protected static final int SCREAM_DURATION = 56;
     protected static final int SCREAM_CANCEL_TICK = 37;
 
-    private static final RawAnimation HURT_GROUND_ANIMATION = RawAnimation.begin().then("hurt_ground", Animation.LoopType.PLAY_ONCE);
+    private static final RawAnimation HURT_GROUND_ANIMATION = RawAnimation.begin().then("hurt_ground", LoopType.PLAY_ONCE);
     public static final AbilityType<EntityElokosa, HurtAbility<EntityElokosa>> HURT_ABILITY = new AbilityType<>("elokosa_hurt", (type, entity) -> new HurtAbility<>(type, entity, HURT_GROUND_ANIMATION, 12, 0) {
-        private static final RawAnimation HURT_WALL_ANIMATION = RawAnimation.begin().then("hurt_wall", Animation.LoopType.PLAY_ONCE);
-        private static final RawAnimation HURT_CEILING_ANIMATION = RawAnimation.begin().then("hurt_ceiling", Animation.LoopType.PLAY_ONCE);
+        private static final RawAnimation HURT_WALL_ANIMATION = RawAnimation.begin().then("hurt_wall", LoopType.PLAY_ONCE);
+        private static final RawAnimation HURT_CEILING_ANIMATION = RawAnimation.begin().then("hurt_ceiling", LoopType.PLAY_ONCE);
 
         @Override
         public RawAnimation getAnimation() {
@@ -130,9 +139,9 @@ public abstract class EntityElokosa extends MowzieGeckoEntity implements Enemy {
             getUser().screamTimer = SCREAM_DURATION;
         }
 
-        private static final RawAnimation SCREAM_GROUND_ANIMATION = RawAnimation.begin().then("scream_ground", Animation.LoopType.PLAY_ONCE);
-        private static final RawAnimation SCREAM_WALL_ANIMATION = RawAnimation.begin().then("scream_wall", Animation.LoopType.PLAY_ONCE);
-        private static final RawAnimation SCREAM_CEILING_ANIMATION = RawAnimation.begin().then("scream_ceiling", Animation.LoopType.PLAY_ONCE);
+        private static final RawAnimation SCREAM_GROUND_ANIMATION = RawAnimation.begin().then("scream_ground", LoopType.PLAY_ONCE);
+        private static final RawAnimation SCREAM_WALL_ANIMATION = RawAnimation.begin().then("scream_wall", LoopType.PLAY_ONCE);
+        private static final RawAnimation SCREAM_CEILING_ANIMATION = RawAnimation.begin().then("scream_ceiling", LoopType.PLAY_ONCE);
 
         @Override
         public RawAnimation getAnimation() {
@@ -187,14 +196,14 @@ public abstract class EntityElokosa extends MowzieGeckoEntity implements Enemy {
 
     private MMAIAvoidEntity<EntityElokosa, LivingEntity> fleeGoal;
 
-    protected MowzieAnimationController<MowzieGeckoEntity> walkRunController = new MowzieAnimationController<>(this, "walk_run_controller", 4, this::predicateWalkRun, 0);
-    protected MowzieAnimationController<MowzieGeckoEntity> jawScreamController = new MowzieAnimationController<>(this, "jaw_scream_controller", 0, this::predicateJawScream, 0);
+    protected MowzieAnimationController<MowzieGeckoEntity> walkRunController = new MowzieAnimationController<>("walk_run_controller", 4, this::predicateWalkRun);
+    protected MowzieAnimationController<MowzieGeckoEntity> jawScreamController = new MowzieAnimationController<>("jaw_scream_controller", 0, this::predicateJawScream);
 
-    private static final ResourceLocation DAY_SPEED_MODIFIER_ID = ResourceLocation.withDefaultNamespace("day_form_speed");
+    private static final Identifier DAY_SPEED_MODIFIER_ID = Identifier.withDefaultNamespace("day_form_speed");
     private static final AttributeModifier SPEED_MODIFIER_DAY = new AttributeModifier(
             DAY_SPEED_MODIFIER_ID, -0.03F, AttributeModifier.Operation.ADD_VALUE
     );
-    private static final ResourceLocation DAY_HEALTH_MODIFIER_ID = ResourceLocation.withDefaultNamespace("day_form_health");
+    private static final Identifier DAY_HEALTH_MODIFIER_ID = Identifier.withDefaultNamespace("day_form_health");
     private static final AttributeModifier HEALTH_MODIFIER_DAY = new AttributeModifier(
             DAY_HEALTH_MODIFIER_ID, -14F, AttributeModifier.Operation.ADD_VALUE
     );
@@ -224,7 +233,7 @@ public abstract class EntityElokosa extends MowzieGeckoEntity implements Enemy {
         super(type, world);
         this.xpReward = 7;
 
-        if (world.isClientSide) {
+        if (world.isClientSide()) {
             tailChain = new GeckoDynamicChain(this);
             tailChain.setDoAttract(true);
             tailChain.setAttractStrength(2f);
@@ -368,27 +377,31 @@ public abstract class EntityElokosa extends MowzieGeckoEntity implements Enemy {
 
     private static RawAnimation RUN_SWITCH_ANIM = RawAnimation.begin().thenLoop("run_switch");
     private static RawAnimation WALK_SWITCH_ANIM = RawAnimation.begin().thenLoop("walk_switch");
-    protected <E extends GeoEntity> PlayState predicateWalkRun(AnimationState<E> event)
+    protected <E extends GeoEntity> PlayState predicateWalkRun(AnimationTest<E> event)
     {
         float threshold = getNightForm() ? 0.9f : 0.7f;
-        AnimationProcessor.QueuedAnimation currentAnim = event.getController().getCurrentAnimation();
-        if (currentAnim != null && currentAnim.animation().name().equals("run_switch")) {
+        // FIXME 26.1.2 port :: AnimationController#getCurrentAnimation() no longer exists; using the raw animation instead
+        RawAnimation currentAnim = event.controller().getCurrentRawAnimation();
+        if (currentAnim != null && currentAnim.equals(RUN_SWITCH_ANIM)) {
             threshold = threshold * 0.777f;
         }
 
-        if (event.getLimbSwingAmount() > threshold && !isStrafing()) {
-            event.getController().setAnimation(RUN_SWITCH_ANIM);
+        // FIXME 26.1.2 port :: AnimationTest has no direct limb-swing-amount accessor anymore (only isMoving()).
+        // Approximated using the underlying LivingEntity's walkAnimation speed (best-effort, verify against old behavior).
+        float limbSwingAmount = event.animatable() instanceof LivingEntity livingAnimatable ? livingAnimatable.walkAnimation.speed(event.renderState().getPartialTick()) : 0f;
+        if (limbSwingAmount > threshold && !isStrafing()) {
+            event.controller().setAnimation(RUN_SWITCH_ANIM);
         }
         else {
-            event.getController().setAnimation(WALK_SWITCH_ANIM);
+            event.controller().setAnimation(WALK_SWITCH_ANIM);
         }
         return PlayState.CONTINUE;
     }
 
     private static RawAnimation SCREAM_JAW_ANIM = RawAnimation.begin().thenPlay("scream_jaw_only");
-    private PlayState predicateJawScream(AnimationState<MowzieGeckoEntity> event) {
+    private PlayState predicateJawScream(AnimationTest<MowzieGeckoEntity> event) {
         if (screamTimer > 0) {
-            event.getController().setAnimation(SCREAM_JAW_ANIM);
+            event.controller().setAnimation(SCREAM_JAW_ANIM);
             return PlayState.CONTINUE;
         }
         else {
@@ -396,22 +409,22 @@ public abstract class EntityElokosa extends MowzieGeckoEntity implements Enemy {
         }
     }
 
-    private static final RawAnimation IDLE_WALL_ANIMATION = RawAnimation.begin().then("idle_wall", Animation.LoopType.LOOP);
-    private static final RawAnimation IDLE_CEILING_ANIMATION = RawAnimation.begin().then("idle_ceiling", Animation.LoopType.LOOP);
+    private static final RawAnimation IDLE_WALL_ANIMATION = RawAnimation.begin().then("idle_wall", LoopType.LOOP);
+    private static final RawAnimation IDLE_CEILING_ANIMATION = RawAnimation.begin().then("idle_ceiling", LoopType.LOOP);
     private static final RawAnimation WALK_ANIM = RawAnimation.begin().thenLoop("walk");
 
     @Override
-    protected <E extends GeoEntity> void loopingAnimations(AnimationState<E> event) {
-        event.getController().transitionLength(4);
+    protected <E extends GeoEntity> void loopingAnimations(AnimationTest<E> event) {
+        event.controller().setTransitionTicks(4);
         if (getClingDirection() != Direction.DOWN && getClingDirection() != Direction.UP) {
-            event.getController().setAnimation(IDLE_WALL_ANIMATION);
+            event.controller().setAnimation(IDLE_WALL_ANIMATION);
         }
         else if (getClingDirection() == Direction.UP) {
-            event.getController().setAnimation(IDLE_CEILING_ANIMATION);
+            event.controller().setAnimation(IDLE_CEILING_ANIMATION);
         }
         else {
             if (event.isMoving()) {
-                event.getController().setAnimation(WALK_ANIM);
+                event.controller().setAnimation(WALK_ANIM);
             }
             else {
                 super.loopingAnimations(event);
@@ -436,10 +449,10 @@ public abstract class EntityElokosa extends MowzieGeckoEntity implements Enemy {
     }
 
     @Override
-    public boolean hurt(DamageSource source, float damage) {
+    public boolean hurtServer(ServerLevel level, DamageSource source, float damage) {
         if (source == damageSources().fall()) return false;
         damageThreat += damage * damageThreatPerDamage;
-        boolean attacked = super.hurt(source, damage);
+        boolean attacked = super.hurtServer(level, source, damage);
         return attacked;
     }
 
@@ -521,7 +534,7 @@ public abstract class EntityElokosa extends MowzieGeckoEntity implements Enemy {
 
             // Curse status effect
             boolean isDay = isDayTime(level());
-            boolean isNewMoon = level().getMoonPhase() == 4;
+            boolean isNewMoon = level().environmentAttributes().getValue(net.minecraft.world.attribute.EnvironmentAttributes.MOON_PHASE, blockPosition()) == net.minecraft.world.level.MoonPhase.NEW_MOON;
             if (!isDay && !isNewMoon) {
                 addEffect(new MobEffectInstance(EffectHandler.MOONS_CURSE, 10, 0, false, false));
             }
@@ -531,7 +544,7 @@ public abstract class EntityElokosa extends MowzieGeckoEntity implements Enemy {
         }
         else {
             if (getClingDirection().getAxis().isHorizontal()) {
-                Vec3i clingDirVec = getClingDirection().getNormal();
+                Vec3i clingDirVec = getClingDirection().getUnitVec3i();
                 BlockState state = level().getBlockState(BlockPos.containing(position().add(0, getBbHeight(), 0)).offset(clingDirVec));
                 missingWallClingUpperBlock = !state.isSolid();
             }
@@ -595,7 +608,15 @@ public abstract class EntityElokosa extends MowzieGeckoEntity implements Enemy {
     }
 
     private static boolean isDayTime(Level level) {
-        return level.getTimeOfDay(0) >= 0.7609 || level.getTimeOfDay(0) < 0.23918849;
+        // FIXME 26.1.2 port: Level#getTimeOfDay(float) and the old sunrise/sunset celestial-angle formula it used
+        // (DimensionType#timeOfDay) were both removed along with the old fixed day/night cycle, replaced by the new
+        // WorldClock/Timeline system (see net.minecraft.world.clock.WorldClock, net.minecraft.world.timeline.Timeline).
+        // This approximates the old [0,1) day-cycle fraction using the raw overworld clock tick count modulo a
+        // 24000-tick day, which is close but NOT identical to the old non-linear celestial-angle curve - the
+        // sunrise/sunset threshold constants below were tuned against that old formula and have not been re-verified
+        // against this approximation.
+        double timeOfDay = (level.getOverworldClockTime() % 24000L) / 24000.0;
+        return timeOfDay >= 0.7609 || timeOfDay < 0.23918849;
     }
 
     @Override
@@ -627,7 +648,7 @@ public abstract class EntityElokosa extends MowzieGeckoEntity implements Enemy {
         if (blockstate.isLadder(level(), blockPosition(), this)) {
             return true;
         }
-        Vec3 clingDirVec = Vec3.atLowerCornerOf(getClingDirection().getNormal());
+        Vec3 clingDirVec = Vec3.atLowerCornerOf(getClingDirection().getUnitVec3i());
         Iterable<VoxelShape> blockCollisions = level().getBlockCollisions(this, getBoundingBox().inflate(0.2).expandTowards(clingDirVec.scale(0.5)));
         return blockCollisions.iterator().hasNext();
     }
@@ -746,7 +767,7 @@ public abstract class EntityElokosa extends MowzieGeckoEntity implements Enemy {
     public static BlockPos findClosestPosWithRaycast(PathfinderMob mob, BlockPos pos) {
         BlockHitResult result = mob.level().clip(new ClipContext(mob.position().add(0, mob.getBbHeight()/2, 0), pos.getCenter(), ClipContext.Block.COLLIDER, ClipContext.Fluid.NONE, mob));
         if (result.getType() == HitResult.Type.BLOCK) {
-            return result.getBlockPos();//.offset(result.getDirection().getNormal());
+            return result.getBlockPos();//.offset(result.getDirection().getUnitVec3i());
         }
         return pos;
     }
@@ -783,6 +804,8 @@ public abstract class EntityElokosa extends MowzieGeckoEntity implements Enemy {
 
     @Override
     protected EntityDimensions getDefaultDimensions(Pose pose) {
+        // NOTE 26.1.2 port: LivingEntity#getDimensions(Pose) is now final (applies Pose.SLEEPING handling + scale()
+        // itself); the per-pose override point moved to this method instead.
         if (!getNightForm()) return DAY_FORM_DIMENSIONS;
         return pose == Pose.LONG_JUMPING ? LONG_JUMP_DIMENSIONS : super.getDefaultDimensions(pose);
     }
@@ -852,7 +875,7 @@ public abstract class EntityElokosa extends MowzieGeckoEntity implements Enemy {
                 setPos(getX(), getY() - height * 0.5, getZ());
             }
             else if (getPose() != Pose.STANDING) {
-                setPos(location.add(Vec3.atLowerCornerOf(direction.getOpposite().getNormal()).scale(width)).subtract(0, height / 2f, 0));
+                setPos(location.add(Vec3.atLowerCornerOf(direction.getOpposite().getUnitVec3i()).scale(width)).subtract(0, height / 2f, 0));
             }
         }
     }
@@ -935,29 +958,28 @@ public abstract class EntityElokosa extends MowzieGeckoEntity implements Enemy {
     }
 
     @Override
-    public void addAdditionalSaveData(CompoundTag compound) {
-        super.addAdditionalSaveData(compound);
-        compound.putInt("cling_direction", getClingDirection().get3DDataValue());
-        compound.putInt("stalking_timer", stalkingTimer);
-        compound.putBoolean("is_stalking", isStalking);
-        compound.putBoolean("is_night_form", getNightForm());
-        compound.putBoolean("prevent_transform", preventTransform);
+    public void addAdditionalSaveData(ValueOutput output) {
+        super.addAdditionalSaveData(output);
+        output.putInt("cling_direction", getClingDirection().get3DDataValue());
+        output.putInt("stalking_timer", stalkingTimer);
+        output.putBoolean("is_stalking", isStalking);
+        output.putBoolean("is_night_form", getNightForm());
+        output.putBoolean("prevent_transform", preventTransform);
     }
 
     @Override
-    public void readAdditionalSaveData(CompoundTag compound) {
-        super.readAdditionalSaveData(compound);
-        setClingDirection(Direction.from3DDataValue(compound.getInt("cling_direction")));
-        stalkingTimer = compound.getInt("stalking_timer");
-        isStalking = compound.getBoolean("is_stalking");
-        setNightForm(compound.getBoolean("is_night_form"));
-        preventTransform = compound.getBoolean("prevent_transform");
+    public void readAdditionalSaveData(ValueInput input) {
+        super.readAdditionalSaveData(input);
+        setClingDirection(Direction.from3DDataValue(input.getIntOr("cling_direction", 0)));
+        stalkingTimer = input.getIntOr("stalking_timer", 0);
+        isStalking = input.getBooleanOr("is_stalking", false);
+        setNightForm(input.getBooleanOr("is_night_form", false));
+        preventTransform = input.getBooleanOr("prevent_transform", false);
     }
 
-    @Override
-    protected boolean shouldDespawnInPeaceful() {
-        return true;
-    }
+    // NOTE 26.1.2 port: Mob#shouldDespawnInPeaceful() was removed - peaceful-despawn eligibility is now decided at
+    // EntityType.Builder registration time via .notInPeaceful() (see EntityHandler.ELOKOSA_FOLLOWER_TO_HOWLER /
+    // ELOKOSA_HOWLER), since this class always wanted it unconditionally true.
 
     @Override
     public boolean requiresCustomPersistence() {
@@ -965,15 +987,15 @@ public abstract class EntityElokosa extends MowzieGeckoEntity implements Enemy {
     }
 
     @Override
-    public @org.jetbrains.annotations.Nullable SpawnGroupData finalizeSpawn(ServerLevelAccessor level, DifficultyInstance difficulty, MobSpawnType spawnType, @org.jetbrains.annotations.Nullable SpawnGroupData spawnGroupData) {
+    public @org.jetbrains.annotations.Nullable SpawnGroupData finalizeSpawn(ServerLevelAccessor level, DifficultyInstance difficulty, EntitySpawnReason spawnType, @org.jetbrains.annotations.Nullable SpawnGroupData spawnGroupData) {
         boolean isDay = isDayTime(level());;
-        boolean isNewMoon = level().getMoonPhase() == 4;
+        boolean isNewMoon = level().environmentAttributes().getValue(net.minecraft.world.attribute.EnvironmentAttributes.MOON_PHASE, blockPosition()) == net.minecraft.world.level.MoonPhase.NEW_MOON;
         if (!isDay && !isNewMoon) {
             addEffect(new MobEffectInstance(EffectHandler.MOONS_CURSE, 10, 0, false, false));
         }
         setNightForm(hasEffect(EffectHandler.MOONS_CURSE));
 
-        if (spawnType == MobSpawnType.SPAWN_EGG) {
+        if (spawnType == EntitySpawnReason.SPAWN_ITEM_USE) {
             // Try to guess which player spawned it, use the vector to them to see if it should spawn clinging
             List<Player> players = getPlayersNearby(5, 5, 5, 5);
             if (!players.isEmpty()) {
@@ -994,11 +1016,6 @@ public abstract class EntityElokosa extends MowzieGeckoEntity implements Enemy {
         return super.finalizeSpawn(level, difficulty, spawnType, spawnGroupData);
     }
 
-    @Override
-    protected ResourceKey<LootTable> getDefaultLootTable() {
-        return LootTableHandler.ELOKOSA;
-    }
-
     static class ElokosaNavigator extends GroundPathNavigation {
         public ElokosaNavigator(Mob mob, Level level) {
             super(mob, level);
@@ -1017,13 +1034,13 @@ public abstract class EntityElokosa extends MowzieGeckoEntity implements Enemy {
                 new AbilitySection.AbilitySectionInfinite(AbilitySection.AbilitySectionType.ACTIVE),
                 new AbilitySection.AbilitySectionDuration(AbilitySection.AbilitySectionType.RECOVERY, 17)
         };
-        private static final RawAnimation LEAP_START_GROUND_ANIMATION = RawAnimation.begin().then("leap_start_ground", Animation.LoopType.HOLD_ON_LAST_FRAME);
-        private static final RawAnimation LEAP_END_GROUND_ANIMATION = RawAnimation.begin().then("leap_end_ground", Animation.LoopType.HOLD_ON_LAST_FRAME);
-        private static final RawAnimation LEAP_START_WALL_ANIMATION = RawAnimation.begin().then("leap_start_wall", Animation.LoopType.HOLD_ON_LAST_FRAME);
-        private static final RawAnimation LEAP_END_WALL_ANIMATION = RawAnimation.begin().then("leap_end_wall", Animation.LoopType.HOLD_ON_LAST_FRAME);
-        private static final RawAnimation LEAP_START_CEILING_ANIMATION = RawAnimation.begin().then("leap_start_ceiling", Animation.LoopType.HOLD_ON_LAST_FRAME);
-        private static final RawAnimation LEAP_END_CEILING_ANIMATION = RawAnimation.begin().then("leap_end_ceiling", Animation.LoopType.HOLD_ON_LAST_FRAME);
-        private static final RawAnimation LEAP_AIR_ANIMATION = RawAnimation.begin().then("leap_air", Animation.LoopType.LOOP);
+        private static final RawAnimation LEAP_START_GROUND_ANIMATION = RawAnimation.begin().then("leap_start_ground", LoopType.HOLD_ON_LAST_FRAME);
+        private static final RawAnimation LEAP_END_GROUND_ANIMATION = RawAnimation.begin().then("leap_end_ground", LoopType.HOLD_ON_LAST_FRAME);
+        private static final RawAnimation LEAP_START_WALL_ANIMATION = RawAnimation.begin().then("leap_start_wall", LoopType.HOLD_ON_LAST_FRAME);
+        private static final RawAnimation LEAP_END_WALL_ANIMATION = RawAnimation.begin().then("leap_end_wall", LoopType.HOLD_ON_LAST_FRAME);
+        private static final RawAnimation LEAP_START_CEILING_ANIMATION = RawAnimation.begin().then("leap_start_ceiling", LoopType.HOLD_ON_LAST_FRAME);
+        private static final RawAnimation LEAP_END_CEILING_ANIMATION = RawAnimation.begin().then("leap_end_ceiling", LoopType.HOLD_ON_LAST_FRAME);
+        private static final RawAnimation LEAP_AIR_ANIMATION = RawAnimation.begin().then("leap_air", LoopType.LOOP);
 
         private int ticksInAir;
         private boolean playedEndAnim = false;
@@ -1239,8 +1256,8 @@ public abstract class EntityElokosa extends MowzieGeckoEntity implements Enemy {
             }
         }
 
-        private static final RawAnimation TRANSFORM_WALL_ANIMATION = RawAnimation.begin().then("transform_day_to_night_wall", Animation.LoopType.PLAY_ONCE);
-        private static final RawAnimation TRANSFORM_CEILING_ANIMATION = RawAnimation.begin().then("transform_day_to_night_ceiling", Animation.LoopType.PLAY_ONCE);
+        private static final RawAnimation TRANSFORM_WALL_ANIMATION = RawAnimation.begin().then("transform_day_to_night_wall", LoopType.PLAY_ONCE);
+        private static final RawAnimation TRANSFORM_CEILING_ANIMATION = RawAnimation.begin().then("transform_day_to_night_ceiling", LoopType.PLAY_ONCE);
 
         @Override
         public RawAnimation getAnimation() {
@@ -1274,8 +1291,8 @@ public abstract class EntityElokosa extends MowzieGeckoEntity implements Enemy {
             }
         }
 
-        private static final RawAnimation TRANSFORM_WALL_ANIMATION = RawAnimation.begin().then("transform_night_to_day_wall", Animation.LoopType.PLAY_ONCE);
-        private static final RawAnimation TRANSFORM_CEILING_ANIMATION = RawAnimation.begin().then("transform_night_to_day_ceiling", Animation.LoopType.PLAY_ONCE);
+        private static final RawAnimation TRANSFORM_WALL_ANIMATION = RawAnimation.begin().then("transform_night_to_day_wall", LoopType.PLAY_ONCE);
+        private static final RawAnimation TRANSFORM_CEILING_ANIMATION = RawAnimation.begin().then("transform_night_to_day_ceiling", LoopType.PLAY_ONCE);
 
         @Override
         public RawAnimation getAnimation() {
@@ -1465,8 +1482,8 @@ public abstract class EntityElokosa extends MowzieGeckoEntity implements Enemy {
         }
         private static final RawAnimation BACKFLIP_ANIMATION = RawAnimation.begin().thenPlayAndHold("backflip");
         private static final RawAnimation BACKFLIP_LAND_ANIMATION = RawAnimation.begin().thenPlayAndHold("backflip_land");
-        private static final RawAnimation LEAP_END_WALL_ANIMATION = RawAnimation.begin().then("leap_end_wall", Animation.LoopType.HOLD_ON_LAST_FRAME);
-        private static final RawAnimation LEAP_END_CEILING_ANIMATION = RawAnimation.begin().then("leap_end_ceiling", Animation.LoopType.HOLD_ON_LAST_FRAME);
+        private static final RawAnimation LEAP_END_WALL_ANIMATION = RawAnimation.begin().then("leap_end_wall", LoopType.HOLD_ON_LAST_FRAME);
+        private static final RawAnimation LEAP_END_CEILING_ANIMATION = RawAnimation.begin().then("leap_end_ceiling", LoopType.HOLD_ON_LAST_FRAME);
 
         @Override
         public void start() {

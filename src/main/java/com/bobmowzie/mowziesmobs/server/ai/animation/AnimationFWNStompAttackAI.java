@@ -69,7 +69,7 @@ public class AnimationFWNStompAttackAI extends SimpleAnimationAI<EntityWroughtna
                                 entity.hurt(entity.damageSources().mobAttack(this.entity), (factor * 5 + 1) * ConfigHandler.COMMON.MOBS.FERROUS_WROUGHTNAUT.combatConfig.attackMultiplier.get().floatValue());
                                 applyKnockbackResistance = (float) ((LivingEntity) entity).getAttribute(Attributes.KNOCKBACK_RESISTANCE).getValue();
                             }
-                            double magnitude = world.random.nextDouble() * 0.15 + 0.1;
+                            double magnitude = world.getRandom().nextDouble() * 0.15 + 0.1;
                             float x = 0, y = 0, z = 0;
                             x += vx * factor * magnitude * (1 - applyKnockbackResistance);
                             y += 0.1 * (1 - applyKnockbackResistance) + factor * 0.15 * (1 - applyKnockbackResistance);
@@ -80,7 +80,7 @@ public class AnimationFWNStompAttackAI extends SimpleAnimationAI<EntityWroughtna
                             }
                         }
                     }
-                    if (world.random.nextBoolean()) {
+                    if (world.getRandom().nextBoolean()) {
                         int hitX = Mth.floor(px);
                         int hitZ = Mth.floor(pz);
                         BlockPos pos = new BlockPos(hitX, hitY, hitZ);

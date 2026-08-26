@@ -17,10 +17,16 @@ import net.minecraft.world.item.ItemStack;
 import net.minecraft.world.level.Level;
 import net.neoforged.neoforge.client.event.RenderFrameEvent;
 import net.neoforged.neoforge.event.entity.living.LivingDamageEvent;
-import software.bernie.geckolib.animatable.GeoEntity;
-import software.bernie.geckolib.animation.AnimationState;
-import software.bernie.geckolib.animation.PlayState;
-import software.bernie.geckolib.animation.RawAnimation;
+import com.geckolib.animatable.GeoEntity;
+import com.geckolib.animatable.client.GeoRenderProvider;
+import com.geckolib.animatable.manager.AnimatableManager;
+import com.geckolib.animation.state.AnimationTest;
+import com.geckolib.animation.object.PlayState;
+import com.geckolib.animation.RawAnimation;
+import com.geckolib.model.GeoModel;
+import com.geckolib.renderer.GeoEntityRenderer;
+import com.geckolib.renderer.base.GeoRenderState;
+import com.geckolib.util.RenderUtil;
 
 import java.util.List;
 import java.util.Random;
@@ -64,13 +70,33 @@ public class Ability<T extends LivingEntity> {
         beginSection(getSectionTrack()[0]);
     }
 
+    // PORTING NOTE (GeckoLib 4 -> 5): MowzieAnimationController#playAnimation's signature grew a GeoRenderState,
+    // AnimatableManager<T> and GeoModel<T> parameter (see that class's own javadoc) - this call site (ability
+    // start/tick logic, NOT inside an active render pass) has none of those readily available. Analysis of the real
+    // GeckoLib 5.5.2 AnimationController#initializeNewAnimation source: playAnimation() always calls reset() first,
+    // which forces triggeredAnimTime = -1, so the only branch that would actually dereference renderState (the
+    // "triggered animation replay" branch, triggeredAnimTime >= 0) never executes on this call path - a throwaway
+    // GeoRenderState.Impl is safe here. The AnimatableManager<T> argument is likewise unused inside playAnimation's
+    // own body (only passed through, never read), but still constructed correctly via the entity's own
+    // AnimatableInstanceCache for correctness/robustness against a future GeckoLib update. GeoModel<T> IS
+    // load-bearing (used to resolve baked bone animation curves), so it's fetched from the entity's actual live
+    // GeckoLib renderer via RenderUtil.getGeckoLibEntityRenderer(EntityType) (the same lookup GeckoLib's own
+    // GeoRenderProvider/RenderUtil helpers use elsewhere) rather than guessed at. UNVERIFIED at runtime (could not
+    // compile/run the game during this port) - flagged per the model/render agent's cross-scope request in
+    // MowzieAnimationController's javadoc.
     public void playAnimation(RawAnimation animation) {
         if (getUser() instanceof MowzieGeckoEntity && getUser().level().isClientSide()) {
             MowzieGeckoEntity entity = (MowzieGeckoEntity) getUser();
             activeAnimation = animation;
             MowzieAnimationController<MowzieGeckoEntity> controller = entity.getController();
             if (controller != null) {
-                controller.playAnimation(entity, animation);
+                GeoEntityRenderer<?, ?> renderer = RenderUtil.getGeckoLibEntityRenderer(entity.getType());
+                if (renderer != null) {
+                    @SuppressWarnings("unchecked")
+                    GeoModel<MowzieGeckoEntity> geoModel = (GeoModel<MowzieGeckoEntity>) renderer.getGeoModel();
+                    AnimatableManager<MowzieGeckoEntity> manager = entity.getAnimatableInstanceCache().getManagerForId(entity.getId());
+                    controller.playAnimation(entity, new GeoRenderState.Impl(), manager, geoModel, animation);
+                }
             }
         }
     }
@@ -229,8 +255,12 @@ public class Ability<T extends LivingEntity> {
         return 3;
     }
 
+    // PORTING NOTE (1.21.1 -> 26.1.2): LivingDamageEvent.Post#getNewDamage() no longer exists - the closest
+    // equivalent on the rewritten event (which now exposes originalDamage/inflictedDamage/healthDamage/
+    // blockedDamage/shieldDamage separately) is getHealthDamage(), the actual damage that landed on the entity's
+    // health after all reductions - matches the old "final applied damage" semantics of getNewDamage().
     public void onTakeDamage(LivingDamageEvent.Post event) {
-        if (isUsing() && event.getNewDamage() >= damageInterruptThreshold() && damageInterrupts()) AbilityHandler.INSTANCE.sendInterruptAbilityMessage(getUser(), getAbilityType());
+        if (isUsing() && event.getHealthDamage() >= damageInterruptThreshold() && damageInterrupts()) AbilityHandler.INSTANCE.sendInterruptAbilityMessage(getUser(), getAbilityType());
     }
 
     /**
@@ -287,10 +317,10 @@ public class Ability<T extends LivingEntity> {
         return abilityData;
     }
 
-    public <E extends GeoEntity> PlayState animationPredicate(AnimationState<E> e, GeckoPlayer.Perspective perspective) {
+    public <E extends GeoEntity> PlayState animationPredicate(AnimationTest<E> e, GeckoPlayer.Perspective perspective) {
         if (activeAnimation == null || activeAnimation.getAnimationStages().isEmpty())
             return PlayState.STOP;
-        e.getController().setAnimation(activeAnimation);
+        e.controller().setAnimation(activeAnimation);
         return PlayState.CONTINUE;
     }
 
@@ -335,12 +365,12 @@ public class Ability<T extends LivingEntity> {
         CompoundTag compound = (CompoundTag) nbt;
         isUsing = compound.contains("ticks_in_use");
         if (isUsing) {
-            ticksInUse = compound.getInt("ticks_in_use");
-            ticksInSection = compound.getInt("ticks_in_section");
-            currentSectionIndex = compound.getInt("current_section");
+            ticksInUse = compound.getIntOr("ticks_in_use", 0);
+            ticksInSection = compound.getIntOr("ticks_in_section", 0);
+            currentSectionIndex = compound.getIntOr("current_section", 0);
         }
         else {
-            cooldownTimer = compound.getInt("cooldown_timer");
+            cooldownTimer = compound.getIntOr("cooldown_timer", 0);
         }
     }
 

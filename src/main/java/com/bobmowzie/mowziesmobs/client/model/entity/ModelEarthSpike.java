@@ -3,29 +3,30 @@ package com.bobmowzie.mowziesmobs.client.model.entity;
 import com.bobmowzie.mowziesmobs.MMCommon;
 import com.bobmowzie.mowziesmobs.client.model.tools.geckolib.MowzieGeoModel;
 import com.bobmowzie.mowziesmobs.server.entity.effects.geomancy.EntityEarthSpike;
-import net.minecraft.resources.ResourceLocation;
+import com.geckolib.renderer.base.GeoRenderState;
+import net.minecraft.resources.Identifier;
 
 public class ModelEarthSpike extends MowzieGeoModel<EntityEarthSpike> {
-    private static final ResourceLocation MODEL = MMCommon.resource("geo/earth_spike.geo.json");
-    private static final ResourceLocation TEXTURE = MMCommon.resource("textures/entity/umvuthi.png");
-    private static final ResourceLocation ANIMATION = MMCommon.resource("animations/earth_spike.animation.json");
+    private static final Identifier MODEL = MMCommon.resource("earth_spike");
+    private static final Identifier TEXTURE = MMCommon.resource("textures/entity/umvuthi.png");
+    private static final Identifier ANIMATION = MMCommon.resource("earth_spike");
 
     public ModelEarthSpike() {
         super();
     }
 
     @Override
-    public ResourceLocation getModelResource(EntityEarthSpike object) {
+    public Identifier getModelResource(GeoRenderState renderState) {
         return MODEL;
     }
 
     @Override
-    public ResourceLocation getTextureResource(EntityEarthSpike object) {
+    public Identifier getTextureResource(GeoRenderState renderState) {
         return TEXTURE;
     }
 
     @Override
-    public ResourceLocation getAnimationResource(EntityEarthSpike object) {
+    public Identifier getAnimationResource(EntityEarthSpike object) {
         return ANIMATION;
     }
 }

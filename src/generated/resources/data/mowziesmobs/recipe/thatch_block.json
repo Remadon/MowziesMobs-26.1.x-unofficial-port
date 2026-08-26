@@ -3,80 +3,43 @@
   "category": "building",
   "ingredients": [
     [
-      {
-        "item": "minecraft:short_grass"
-      },
-      {
-        "item": "minecraft:tall_grass"
-      }
+      "minecraft:short_grass",
+      "minecraft:tall_grass"
     ],
     [
-      {
-        "item": "minecraft:short_grass"
-      },
-      {
-        "item": "minecraft:tall_grass"
-      }
+      "minecraft:short_grass",
+      "minecraft:tall_grass"
     ],
     [
-      {
-        "item": "minecraft:short_grass"
-      },
-      {
-        "item": "minecraft:tall_grass"
-      }
+      "minecraft:short_grass",
+      "minecraft:tall_grass"
     ],
     [
-      {
-        "item": "minecraft:short_grass"
-      },
-      {
-        "item": "minecraft:tall_grass"
-      }
+      "minecraft:short_grass",
+      "minecraft:tall_grass"
     ],
     [
-      {
-        "item": "minecraft:short_grass"
-      },
-      {
-        "item": "minecraft:tall_grass"
-      }
+      "minecraft:short_grass",
+      "minecraft:tall_grass"
     ],
     [
-      {
-        "item": "minecraft:short_grass"
-      },
-      {
-        "item": "minecraft:tall_grass"
-      }
+      "minecraft:short_grass",
+      "minecraft:tall_grass"
     ],
     [
-      {
-        "item": "minecraft:short_grass"
-      },
-      {
-        "item": "minecraft:tall_grass"
-      }
+      "minecraft:short_grass",
+      "minecraft:tall_grass"
     ],
     [
-      {
-        "item": "minecraft:short_grass"
-      },
-      {
-        "item": "minecraft:tall_grass"
-      }
+      "minecraft:short_grass",
+      "minecraft:tall_grass"
     ],
     [
-      {
-        "item": "minecraft:short_grass"
-      },
-      {
-        "item": "minecraft:tall_grass"
-      }
+      "minecraft:short_grass",
+      "minecraft:tall_grass"
     ]
   ],
   "result": {
-    "count": 1,
     "id": "mowziesmobs:thatch_block"
   }
 }

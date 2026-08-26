@@ -2,7 +2,7 @@ package com.bobmowzie.mowziesmobs.server.inventory;
 
 import com.bobmowzie.mowziesmobs.server.entity.MowzieEntity;
 import net.minecraft.world.Container;
-import net.minecraft.world.entity.player.Player;
+import net.minecraft.world.entity.ContainerUser;
 import net.minecraft.world.item.ItemStack;
 
 import java.util.ArrayList;
@@ -30,10 +30,10 @@ public abstract class InventoryOneInput implements Container {
     }
 
     @Override
-    public void startOpen(Player player) {}
+    public void startOpen(ContainerUser player) {}
 
     @Override
-    public void stopOpen(Player player) {}
+    public void stopOpen(ContainerUser player) {}
 
     @Override
     public ItemStack getItem(int index) {

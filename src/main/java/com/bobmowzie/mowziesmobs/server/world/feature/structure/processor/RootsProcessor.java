@@ -30,7 +30,7 @@ public class RootsProcessor extends StructureProcessor {
 
     @Override
     public StructureTemplate.StructureBlockInfo process(LevelReader levelReader, BlockPos jigsawPiecePos, BlockPos jigsawPieceBottomCenterPos, StructureTemplate.StructureBlockInfo blockInfoLocal, StructureTemplate.StructureBlockInfo blockInfoGlobal, StructurePlaceSettings structurePlacementData, StructureTemplate template) {
-        if (levelReader instanceof WorldGenRegion worldGenRegion && !worldGenRegion.getCenter().equals(new ChunkPos(blockInfoGlobal.pos()))) {
+        if (levelReader instanceof WorldGenRegion worldGenRegion && !worldGenRegion.getCenter().equals(ChunkPos.containing(blockInfoGlobal.pos()))) {
             return blockInfoGlobal;
         }
         RandomSource random = structurePlacementData.getRandom(blockInfoGlobal.pos());
@@ -44,7 +44,9 @@ public class RootsProcessor extends StructureProcessor {
                 BlockPos pos = blockInfoGlobal.pos().below();
                 BlockState belowState = levelReader.getBlockState(pos);
                 if (belowState.isAir()) {
-                    levelReader.getChunk(pos).setBlockState(pos, Blocks.HANGING_ROOTS.defaultBlockState(), false);
+                    // PORTING NOTE: ChunkAccess#setBlockState's 3rd param is now an int update-flags bitmask, not a
+                    // boolean "isMoving" flag (see BaseProcessor.java for the fuller writeup).
+                    levelReader.getChunk(pos).setBlockState(pos, Blocks.HANGING_ROOTS.defaultBlockState(), net.minecraft.world.level.block.Block.UPDATE_ALL);
                 }
             } else if (
                     blockInfoGlobal.state().is(Blocks.DARK_OAK_TRAPDOOR) &&

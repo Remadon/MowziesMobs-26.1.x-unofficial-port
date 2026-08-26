@@ -6,25 +6,44 @@ import com.bobmowzie.mowziesmobs.server.inventory.ContainerSculptorTrade;
 import com.bobmowzie.mowziesmobs.server.inventory.InventorySculptor;
 import com.bobmowzie.mowziesmobs.server.item.ItemHandler;
 import com.bobmowzie.mowziesmobs.server.message.MessageSculptorTrade;
-import com.mojang.blaze3d.systems.RenderSystem;
-import net.minecraft.client.gui.GuiGraphics;
+import net.minecraft.client.gui.GuiGraphicsExtractor;
 import net.minecraft.client.gui.components.Button;
 import net.minecraft.client.gui.screens.inventory.AbstractContainerScreen;
 import net.minecraft.client.gui.screens.inventory.InventoryScreen;
-import net.minecraft.client.renderer.GameRenderer;
+import net.minecraft.client.renderer.RenderPipelines;
 import net.minecraft.client.resources.language.I18n;
 import net.minecraft.network.chat.Component;
 import net.minecraft.network.chat.HoverEvent;
 import net.minecraft.network.chat.MutableComponent;
 import net.minecraft.network.chat.Style;
-import net.minecraft.resources.ResourceLocation;
+import net.minecraft.resources.Identifier;
 import net.minecraft.world.Container;
 import net.minecraft.world.entity.player.Inventory;
 import net.minecraft.world.item.ItemStack;
-import net.neoforged.neoforge.network.PacketDistributor;
+import net.neoforged.neoforge.client.network.ClientPacketDistributor;
 
+/**
+ * PORTING NOTE (see PORTING_NOTES.md GuiGraphicsExtractor section and `client/gui/screens/inventory/ContainerScreen.java`
+ * / `InventoryScreen.java` in the vanilla tree for the concrete "before/after" patterns this file follows):
+ * - `renderBg(GuiGraphics, float, int, int)` -> `extractBackground(GuiGraphicsExtractor, int mouseX, int mouseY, float a)`
+ *   (note the parameter ORDER changed too - partial tick moved to last).
+ * - `renderLabels(GuiGraphics, int, int)` -> `extractLabels(GuiGraphicsExtractor, int, int)`.
+ * - `render(GuiGraphics, int, int, float)` -> `extractRenderState(GuiGraphicsExtractor, int, int, float)`; the old
+ *   explicit `this.renderTooltip(guiGraphics, mouseX, mouseY)` call is gone because
+ *   `AbstractContainerScreen#extractRenderState` already calls `extractTooltip(...)` internally now.
+ * - `GuiGraphics#blit(Identifier, ...)` -> `GuiGraphicsExtractor#blit(RenderPipeline, Identifier, ...)` (u/v are now
+ *   floats); `drawString`->`text`; `renderItem`->`item`; `renderItemDecorations`->`itemDecorations`;
+ *   `renderTooltip`->`setTooltipForNextFrame`; `renderComponentHoverEffect`->`componentHoverEffect`;
+ *   `pose().pushPose()/popPose()`->`pose().pushMatrix()/popMatrix()` (the pose stack is now a 2D `Matrix3x2fStack`,
+ *   no Z component - the old `.translate(0, 0, 100)` Z-layering hack has no equivalent and isn't needed any more,
+ *   since draw ordering in the new deferred render-state list already determines layering).
+ * - `InventoryScreen.renderEntityInInventoryFollowsMouse(...)` -> `InventoryScreen.extractEntityInInventoryFollowsMouse(...)`
+ *   (same parameters, just renamed + GuiGraphicsExtractor).
+ * - The old `RenderSystem.colorMask`/`setShader`/`setShaderColor` calls before the background blit are no longer
+ *   meaningful in the new deferred pipeline (the blit call itself carries the RenderPipeline/texture) - removed.
+ */
 public final class GuiSculptorTrade extends AbstractContainerScreen<ContainerSculptorTrade> implements InventorySculptor.ChangeListener {
-    private static final ResourceLocation TEXTURE_TRADE = ResourceLocation.fromNamespaceAndPath(MMCommon.MODID, "textures/gui/container/umvuthi_trade.png");
+    private static final Identifier TEXTURE_TRADE = Identifier.fromNamespaceAndPath(MMCommon.MODID, "textures/gui/container/umvuthi_trade.png");
 
     private final EntitySculptor sculptor;
     private final InventorySculptor inventory;
@@ -51,33 +70,31 @@ public final class GuiSculptorTrade extends AbstractContainerScreen<ContainerScu
 
     private void actionPerformed(Button button) {
     	if (button == beginButton) {
-            PacketDistributor.sendToServer(new MessageSculptorTrade(sculptor.getId()));
+            ClientPacketDistributor.sendToServer(new MessageSculptorTrade(sculptor.getId()));
     	}
     }
 
     @Override
-    protected void renderBg(GuiGraphics guiGraphics, float partialTicks, int x, int y) {
-        RenderSystem.colorMask(true, true, true, true);
-        RenderSystem.setShader(GameRenderer::getPositionTexShader);
-        RenderSystem.setShaderColor(1.0F, 1.0F, 1.0F, 1.0F);
-        guiGraphics.blit(TEXTURE_TRADE, leftPos, topPos, 0, 0, imageWidth, imageHeight);
+    public void extractBackground(GuiGraphicsExtractor guiGraphics, int x, int y, float partialTicks) {
+        super.extractBackground(guiGraphics, x, y, partialTicks);
+        guiGraphics.blit(RenderPipelines.GUI_TEXTURED, TEXTURE_TRADE, leftPos, topPos, 0.0F, 0.0F, imageWidth, imageHeight, imageWidth, imageHeight);
         if (sculptor != null) {
             sculptor.renderingInGUI = true;
             // x and y values are chosen as the first and last pixel of the black (entity) box of the gui texture
-            // The two x and y values determine the size for the 'GuiGraphics#enableScissor' call (their middle point is also where the entity will be rendered)
-            InventoryScreen.renderEntityInInventoryFollowsMouse(guiGraphics, leftPos + 8, topPos + 8, leftPos + 59, topPos + 69, 14, 0, x, y, sculptor);
+            // The two x and y values determine the size for the 'GuiGraphicsExtractor#enableScissor' call (their middle point is also where the entity will be rendered)
+            InventoryScreen.extractEntityInInventoryFollowsMouse(guiGraphics, leftPos + 8, topPos + 8, leftPos + 59, topPos + 69, 14, 0, x, y, sculptor);
             sculptor.renderingInGUI = false;
         }
     }
 
     @Override
-    protected void renderLabels(GuiGraphics guiGraphics, int x, int y) {
-        guiGraphics.drawString(font, title, (int) (imageWidth / 2f - font.width(title) / 2f) + 30, 6, 0x404040, false);
-        guiGraphics.drawString(font, I18n.get("container.inventory"), 8, imageHeight - 96 + 2, 0x404040, false);
+    protected void extractLabels(GuiGraphicsExtractor guiGraphics, int x, int y) {
+        guiGraphics.text(font, title, (int) (imageWidth / 2f - font.width(title) / 2f) + 30, 6, 0x404040, false);
+        guiGraphics.text(font, I18n.get("container.inventory"), 8, imageHeight - 96 + 2, 0x404040, false);
         if (sculptor != null) {
             if (sculptor.isTestObstructed()) {
                 String blocked = I18n.get("entity.mowziesmobs.sculptor.trade.blocked");
-                guiGraphics.drawString(font, blocked, (int) (imageWidth / 2f - font.width(blocked) / 2f) + 30, 42, 0x404040, false);
+                guiGraphics.text(font, blocked, (int) (imageWidth / 2f - font.width(blocked) / 2f) + 30, 42, 0x404040, false);
             }
             if (prevBlocked != sculptor.isTestObstructed()) {
                 onChange(inventory);
@@ -87,29 +104,26 @@ public final class GuiSculptorTrade extends AbstractContainerScreen<ContainerScu
     }
 
     @Override
-    public void render(GuiGraphics guiGraphics, int mouseX, int mouseY, float partialTicks) {
-        super.render(guiGraphics, mouseX, mouseY, partialTicks);
-        this.renderTooltip(guiGraphics, mouseX, mouseY);
+    public void extractRenderState(GuiGraphicsExtractor guiGraphics, int mouseX, int mouseY, float partialTicks) {
+        super.extractRenderState(guiGraphics, mouseX, mouseY, partialTicks);
         ItemStack inSlot = inventory.getItem(0);
-        guiGraphics.pose().pushPose();
+        guiGraphics.pose().pushMatrix();
 
-        guiGraphics.pose().translate(0.0F, 0.0F, 100.0F);
-
-        guiGraphics.renderItem(sculptor.getDesires(), leftPos + 68, topPos + 24);
-        guiGraphics.renderItemDecorations(font, sculptor.getDesires(), leftPos + 68, topPos + 24);
-        guiGraphics.renderItem(output, leftPos + 134, topPos + 24);
-        guiGraphics.renderItemDecorations(font, output, leftPos + 134, topPos + 24);
+        guiGraphics.item(sculptor.getDesires(), leftPos + 68, topPos + 24);
+        guiGraphics.itemDecorations(font, sculptor.getDesires(), leftPos + 68, topPos + 24);
+        guiGraphics.item(output, leftPos + 134, topPos + 24);
+        guiGraphics.itemDecorations(font, output, leftPos + 134, topPos + 24);
         if (isHovering(68, 24, 16, 16, mouseX, mouseY)) {
-            guiGraphics.renderTooltip(font, sculptor.getDesires(), mouseX, mouseY);
+            guiGraphics.setTooltipForNextFrame(font, sculptor.getDesires(), mouseX, mouseY);
         } else if (isHovering(134, 24, 16, 16, mouseX, mouseY)) {
-            guiGraphics.renderTooltip(font, output, mouseX, mouseY);
+            guiGraphics.setTooltipForNextFrame(font, output, mouseX, mouseY);
         }
 
         if (beginButton.isMouseOver(mouseX, mouseY)) {
-            guiGraphics.renderComponentHoverEffect(font, getHoverText(), mouseX, mouseY);
+            guiGraphics.componentHoverEffect(font, getHoverText(), mouseX, mouseY);
         }
 
-        guiGraphics.pose().popPose();
+        guiGraphics.pose().popMatrix();
     }
 
     @Override
@@ -123,6 +137,6 @@ public final class GuiSculptorTrade extends AbstractContainerScreen<ContainerScu
 
     private Style getHoverText() {
         MutableComponent text = Component.translatable(I18n.get("entity.mowziesmobs.sculptor.trade.button.hover"));
-        return text.getStyle().withHoverEvent(new HoverEvent(HoverEvent.Action.SHOW_TEXT, text));
+        return text.getStyle().withHoverEvent(new HoverEvent.ShowText(text));
     }
 }

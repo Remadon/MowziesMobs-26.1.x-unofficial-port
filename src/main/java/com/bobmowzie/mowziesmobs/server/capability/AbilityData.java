@@ -6,21 +6,21 @@ import com.bobmowzie.mowziesmobs.server.ability.Ability;
 import com.bobmowzie.mowziesmobs.server.ability.AbilityHandler;
 import com.bobmowzie.mowziesmobs.server.ability.AbilityType;
 import com.bobmowzie.mowziesmobs.server.entity.MowzieGeckoEntity;
-import net.minecraft.core.HolderLookup;
+import com.geckolib.animatable.GeoEntity;
+import com.geckolib.animation.object.PlayState;
+import com.geckolib.animation.state.AnimationTest;
 import net.minecraft.nbt.CompoundTag;
 import net.minecraft.nbt.Tag;
 import net.minecraft.world.entity.LivingEntity;
 import net.minecraft.world.entity.player.Player;
 import net.minecraft.world.item.ItemStack;
-import net.neoforged.neoforge.common.util.INBTSerializable;
-import org.jetbrains.annotations.NotNull;
-import software.bernie.geckolib.animatable.GeoEntity;
-import software.bernie.geckolib.animation.AnimationState;
-import software.bernie.geckolib.animation.PlayState;
+import net.minecraft.world.level.storage.ValueInput;
+import net.minecraft.world.level.storage.ValueOutput;
+import net.neoforged.neoforge.common.util.ValueIOSerializable;
 
 import java.util.*;
 
-public class AbilityData implements INBTSerializable<CompoundTag> {
+public class AbilityData implements ValueIOSerializable {
     SortedMap<AbilityType<?, ?>, Ability<?>> abilityInstances = new TreeMap<>();
     Ability<?> activeAbility = null;
     Map<String, Tag> nbtMap = new HashMap<>();
@@ -101,7 +101,7 @@ public class AbilityData implements INBTSerializable<CompoundTag> {
         return getActiveAbility() != null && getActiveAbility().preventsItemUse(itemStack);
     }
 
-    public <E extends GeoEntity> PlayState animationPredicate(AnimationState<E> e, GeckoPlayer.Perspective perspective) {
+    public <E extends GeoEntity> PlayState animationPredicate(AnimationTest<E> e, GeckoPlayer.Perspective perspective) {
         return getActiveAbility().animationPredicate(e, perspective);
     }
 
@@ -110,7 +110,7 @@ public class AbilityData implements INBTSerializable<CompoundTag> {
     }
 
     @Override
-    public CompoundTag serializeNBT(@NotNull HolderLookup.Provider lookup) {
+    public void serialize(ValueOutput output) {
         CompoundTag compound = new CompoundTag();
         for (Map.Entry<AbilityType<?, ?>, Ability<?>> abilityEntry : getAbilityMap().entrySet()) {
             CompoundTag nbt = abilityEntry.getValue().writeNBT();
@@ -118,15 +118,18 @@ public class AbilityData implements INBTSerializable<CompoundTag> {
                 compound.put(abilityEntry.getKey().getName(), nbt);
             }
         }
-        return compound;
+        if (!compound.isEmpty()) {
+            output.store("abilities", CompoundTag.CODEC, compound);
+        }
     }
 
     @Override
-    public void deserializeNBT(@NotNull HolderLookup.Provider lookup, CompoundTag nbt) {
+    public void deserialize(ValueInput input) {
         nbtMap.clear();
-        Set<String> keys = nbt.getAllKeys();
+        CompoundTag compound = input.read("abilities", CompoundTag.CODEC).orElseGet(CompoundTag::new);
+        Set<String> keys = compound.keySet();
         for (String abilityName : keys) {
-            nbtMap.put(abilityName, nbt.get(abilityName));
+            nbtMap.put(abilityName, compound.get(abilityName));
         }
         needsReinstancing = true;
     }

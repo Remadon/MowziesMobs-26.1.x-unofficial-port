@@ -1,18 +1,19 @@
 package com.bobmowzie.mowziesmobs.client.particle;
 
 import com.bobmowzie.mowziesmobs.client.render.MMRenderType;
-import com.mojang.blaze3d.vertex.VertexConsumer;
 import com.mojang.serialization.Codec;
 import com.mojang.serialization.MapCodec;
 import com.mojang.serialization.codecs.RecordCodecBuilder;
 import net.minecraft.client.Camera;
 import net.minecraft.client.multiplayer.ClientLevel;
 import net.minecraft.client.particle.*;
+import net.minecraft.client.renderer.state.level.QuadParticleRenderState;
 import net.minecraft.core.particles.ParticleOptions;
 import net.minecraft.core.particles.ParticleType;
 import net.minecraft.network.RegistryFriendlyByteBuf;
 import net.minecraft.network.codec.ByteBufCodecs;
 import net.minecraft.network.codec.StreamCodec;
+import net.minecraft.util.RandomSource;
 import net.minecraft.util.StringRepresentable;
 import net.neoforged.neoforge.network.codec.NeoForgeStreamCodecs;
 import org.jetbrains.annotations.NotNull;
@@ -20,7 +21,7 @@ import org.jetbrains.annotations.NotNull;
 /**
  * Created by BobMowzie on 6/2/2017.
  */
-public class ParticleCloud extends TextureSheetParticle {
+public class ParticleCloud extends SingleQuadParticle {
     private final float red;
     private final float green;
     private final float blue;
@@ -46,7 +47,7 @@ public class ParticleCloud extends TextureSheetParticle {
     }
 
     public ParticleCloud(ClientLevel world, double x, double y, double z, double vx, double vy, double vz, double r, double g, double b, double scale, int duration, EnumCloudBehavior behavior, double airDrag) {
-        super(world, x, y, z);
+        super(world, x, y, z, null);
         this.scale = (float) scale * 0.5f * 0.1f;
         lifetime = duration;
         xd = vx * 0.5;
@@ -61,8 +62,14 @@ public class ParticleCloud extends TextureSheetParticle {
     }
 
     @Override
-    public ParticleRenderType getRenderType() {
-        return MMRenderType.PARTICLE_SHEET_TRANSLUCENT_NO_DEPTH;
+    public ParticleRenderType getGroup() {
+        return ParticleRenderType.SINGLE_QUADS;
+    }
+
+    // TODO(out of scope): see MMRenderType.PARTICLE_LAYER_TRANSLUCENT_NO_DEPTH note in ParticleSparkle.java.
+    @Override
+    public SingleQuadParticle.Layer getLayer() {
+        return MMRenderType.PARTICLE_LAYER_TRANSLUCENT_NO_DEPTH;
     }
 
     @Override
@@ -73,8 +80,9 @@ public class ParticleCloud extends TextureSheetParticle {
         zd *= airDrag;
     }
 
+    // NB: render(VertexConsumer, Camera, float) no longer exists - see ParticleSparkle.java for context.
     @Override
-    public void render(VertexConsumer buffer, Camera renderInfo, float partialTicks) {
+    public void extract(QuadParticleRenderState particleTypeRenderState, Camera renderInfo, float partialTicks) {
         float var = (age + partialTicks)/(float)lifetime;
         alpha = 0.2f * ((float) (1 - Math.exp(5 * (var - 1)) - Math.pow(2000, -var)));
         if (alpha < 0.01) alpha = 0.01f;
@@ -82,7 +90,7 @@ public class ParticleCloud extends TextureSheetParticle {
         else if (behavior == EnumCloudBehavior.GROW) this.quadSize = scale * ((0.7f * var) + 0.3f);
         else this.quadSize = scale;
 
-        super.render(buffer, renderInfo, partialTicks);
+        super.extract(particleTypeRenderState, renderInfo, partialTicks);
     }
 
     public static final class Provider implements ParticleProvider<Data> {
@@ -93,7 +101,7 @@ public class ParticleCloud extends TextureSheetParticle {
         }
 
         @Override
-        public Particle createParticle(Data typeIn, @NotNull ClientLevel worldIn, double x, double y, double z, double xSpeed, double ySpeed, double zSpeed) {
+        public Particle createParticle(Data typeIn, @NotNull ClientLevel worldIn, double x, double y, double z, double xSpeed, double ySpeed, double zSpeed, RandomSource random) {
             ParticleCloud particleCloud = new ParticleCloud(worldIn, x, y, z, xSpeed, ySpeed, zSpeed, typeIn.red(), typeIn.green(), typeIn.blue(), typeIn.scale(), typeIn.duration(), typeIn.behavior(), typeIn.airDrag());
             particleCloud.setSpriteFromAge(spriteSet);
             particleCloud.setColor(typeIn.red(), typeIn.green(), typeIn.blue());
@@ -115,7 +123,7 @@ public class ParticleCloud extends TextureSheetParticle {
                 ).apply(instance, Data::new)
         );
 
-        public static final StreamCodec<RegistryFriendlyByteBuf, Data> STREAM_CODEC = NeoForgeStreamCodecs.composite(
+        public static final StreamCodec<RegistryFriendlyByteBuf, Data> STREAM_CODEC = StreamCodec.composite(
                 ByteBufCodecs.FLOAT, Data::red,
                 ByteBufCodecs.FLOAT, Data::green,
                 ByteBufCodecs.FLOAT, Data::blue,

@@ -5,15 +5,16 @@ import com.bobmowzie.mowziesmobs.server.potion.EffectHandler;
 import net.minecraft.network.chat.Component;
 import net.minecraft.network.chat.MutableComponent;
 import net.minecraft.world.InteractionHand;
-import net.minecraft.world.InteractionResultHolder;
+import net.minecraft.world.InteractionResult;
 import net.minecraft.world.effect.MobEffectInstance;
 import net.minecraft.world.entity.player.Player;
 import net.minecraft.world.item.Item;
 import net.minecraft.world.item.ItemStack;
 import net.minecraft.world.item.TooltipFlag;
+import net.minecraft.world.item.component.TooltipDisplay;
 import net.minecraft.world.level.Level;
 
-import java.util.List;
+import java.util.function.Consumer;
 
 /**
  * Created by BobMowzie on 10/31/2016.
@@ -24,27 +25,27 @@ public class ItemGrantSunsBlessing extends Item {
     }
 
     @Override
-    public InteractionResultHolder<ItemStack> use(Level worldIn, Player playerIn, InteractionHand hand) {
+    public InteractionResult use(Level worldIn, Player playerIn, InteractionHand hand) {
         playerIn.addEffect(new MobEffectInstance(EffectHandler.SUNS_BLESSING, -1, 0, false, false));
         return super.use(worldIn, playerIn, hand);
     }
 
     @Override
-    public void appendHoverText(ItemStack stack, TooltipContext context, List<Component> tooltip, TooltipFlag flagIn) {
-        super.appendHoverText(stack, context, tooltip, flagIn);
+    public void appendHoverText(ItemStack stack, TooltipContext context, TooltipDisplay display, Consumer<Component> tooltip, TooltipFlag flagIn) {
+        super.appendHoverText(stack, context, display, tooltip, flagIn);
         int effectDuration = ConfigHandler.COMMON.TOOLS_AND_ABILITIES.SUNS_BLESSING.effectDuration.get();
         int solarBeamCost = ConfigHandler.COMMON.TOOLS_AND_ABILITIES.SUNS_BLESSING.solarBeamCost.get();
         int supernovaCost = ConfigHandler.COMMON.TOOLS_AND_ABILITIES.SUNS_BLESSING.supernovaCost.get();
-        tooltip.add(
+        tooltip.accept(
                 Component.translatable(getDescriptionId() + ".text.0")
                 .append(" " + effectDuration + " ")
                 .append(Component.translatable(getDescriptionId() + ".text.1")).setStyle(ItemHandler.TOOLTIP_STYLE)
         );
-        tooltip.add(Component.translatable(getDescriptionId() + ".text.2").setStyle(ItemHandler.TOOLTIP_STYLE));
+        tooltip.accept(Component.translatable(getDescriptionId() + ".text.2").setStyle(ItemHandler.TOOLTIP_STYLE));
 
-        tooltip.add(Component.translatable(getDescriptionId() + ".text.3").setStyle(ItemHandler.TOOLTIP_STYLE));
-        tooltip.add(Component.translatable(getDescriptionId() + ".text.4").setStyle(ItemHandler.TOOLTIP_STYLE));
-        tooltip.add(
+        tooltip.accept(Component.translatable(getDescriptionId() + ".text.3").setStyle(ItemHandler.TOOLTIP_STYLE));
+        tooltip.accept(Component.translatable(getDescriptionId() + ".text.4").setStyle(ItemHandler.TOOLTIP_STYLE));
+        tooltip.accept(
                 Component.translatable(getDescriptionId() + ".text.5")
                 .append(" " + solarBeamCost + " ")
                 .append(Component.translatable(getDescriptionId() + ".text.6")).setStyle(ItemHandler.TOOLTIP_STYLE)
@@ -58,6 +59,6 @@ public class ItemGrantSunsBlessing extends Item {
         }
         supernovaComponent.append(Component.translatable(getDescriptionId() + ".text.9"));
         supernovaComponent.withStyle(ItemHandler.TOOLTIP_STYLE);
-        tooltip.add(supernovaComponent);
+        tooltip.accept(supernovaComponent);
     }
 }

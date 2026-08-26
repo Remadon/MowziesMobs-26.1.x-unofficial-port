@@ -41,7 +41,7 @@ public class EntityIceBall extends EntityMagicEffect {
         move(MoverType.SELF, getDeltaMovement());
 
         if (tickCount == 1) {
-            if (level().isClientSide) {
+            if (level().isClientSide()) {
                 MMCommon.PROXY.playIceBreathSound(this);
             }
         }
@@ -52,8 +52,8 @@ public class EntityIceBall extends EntityMagicEffect {
                 if (entity instanceof ItemEntity) continue;
                 if (entity == getCaster()) continue;
                 if (entity instanceof ItemEntity) continue;
-                if (entity.getType().is(EntityTypeTags.FREEZE_IMMUNE_ENTITY_TYPES) || entity instanceof EnderDragon) continue;
-                if (entity.hurt(damageSources().freeze(), 3f * ConfigHandler.COMMON.MOBS.FROSTMAW.combatConfig.attackMultiplier.get().floatValue())) {
+                if (entity.is(EntityTypeTags.FREEZE_IMMUNE_ENTITY_TYPES) || entity instanceof EnderDragon) continue;
+                if (entity.hurtOrSimulate(damageSources().freeze(), 3f * ConfigHandler.COMMON.MOBS.FROSTMAW.combatConfig.attackMultiplier.get().floatValue())) {
                     if (entity instanceof LivingEntity) DataHandler.getData(entity, DataHandler.FROZEN_DATA).addFreezeProgress((LivingEntity) entity, 1);
                 }
             }
@@ -63,7 +63,7 @@ public class EntityIceBall extends EntityMagicEffect {
             explode();
         }
 
-        if (level().isClientSide) {
+        if (level().isClientSide()) {
             float scale = 2f;
             double x = getX();
             double y = getY() + getBbHeight() / 2;
@@ -110,7 +110,7 @@ public class EntityIceBall extends EntityMagicEffect {
     }
 
     private void explode() {
-        if (level().isClientSide) {
+        if (level().isClientSide()) {
             for (int i = 0; i < 8; i++) {
                 Vec3 particlePos = new Vec3(random.nextFloat() * 0.3, 0, 0);
                 particlePos = particlePos.yRot((float) (random.nextFloat() * 2 * Math.PI));

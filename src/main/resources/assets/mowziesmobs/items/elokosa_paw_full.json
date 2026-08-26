@@ -1,0 +1,19 @@
+{
+  "model": {
+    "type": "minecraft:range_dispatch",
+    "property": "minecraft:cooldown",
+    "fallback": {
+      "type": "minecraft:model",
+      "model": "mowziesmobs:item/elokosa_paw_full"
+    },
+    "entries": [
+      {
+        "threshold": 0.001,
+        "model": {
+          "type": "minecraft:model",
+          "model": "mowziesmobs:item/elokosa_paw_closed"
+        }
+      }
+    ]
+  }
+}

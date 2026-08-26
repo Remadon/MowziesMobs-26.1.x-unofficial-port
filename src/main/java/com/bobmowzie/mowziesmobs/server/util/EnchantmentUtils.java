@@ -12,13 +12,15 @@ import net.neoforged.neoforge.common.CommonHooks;
 import org.jetbrains.annotations.NotNull;
 import org.jetbrains.annotations.Nullable;
 
+// PORTING NOTE (1.21.1 -> 26.1.2): RegistryAccess#registryOrThrow was renamed to lookupOrThrow (confirmed against
+// real 26.1.2 RegistryAccess source; see also MessageUpdateBossBar.java for the same rename).
 public class EnchantmentUtils {
     public static int getLevel(@NotNull final ResourceKey<Enchantment> enchantment, @NotNull final LivingEntity entity) {
-        return entity.level().registryAccess().registryOrThrow(Registries.ENCHANTMENT).getHolder(enchantment).map(reference -> EnchantmentHelper.getEnchantmentLevel(reference, entity)).orElse(0);
+        return entity.level().registryAccess().lookupOrThrow(Registries.ENCHANTMENT).get(enchantment).map(reference -> EnchantmentHelper.getEnchantmentLevel(reference, entity)).orElse(0);
     }
 
     public static int getLevel(@NotNull final ResourceKey<Enchantment> enchantment, @NotNull final Level level, @NotNull final ItemStack stack) {
-        return level.registryAccess().registryOrThrow(Registries.ENCHANTMENT).getHolder(enchantment).map(stack::getEnchantmentLevel).orElse(0);
+        return level.registryAccess().lookupOrThrow(Registries.ENCHANTMENT).get(enchantment).map(stack::getEnchantmentLevel).orElse(0);
     }
 
     public static @Nullable Holder.Reference<Enchantment> getHolder(final ResourceKey<Enchantment> enchantment) {

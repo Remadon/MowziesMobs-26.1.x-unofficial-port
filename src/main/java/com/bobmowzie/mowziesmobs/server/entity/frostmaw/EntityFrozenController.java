@@ -6,6 +6,8 @@ import net.minecraft.world.entity.Entity;
 import net.minecraft.world.entity.EntityType;
 import net.minecraft.world.entity.player.Player;
 import net.minecraft.world.level.Level;
+import net.minecraft.world.level.storage.ValueInput;
+import net.minecraft.world.level.storage.ValueOutput;
 import net.minecraft.world.phys.Vec3;
 
 /**
@@ -22,9 +24,15 @@ public class EntityFrozenController extends Entity {
     }
 
     @Override
+    public boolean hurtServer(net.minecraft.server.level.ServerLevel level, net.minecraft.world.damagesource.DamageSource source, float amount) {
+        // NOTE 26.1.2 port: see EntityMagicEffect#hurtServer for context on this required override.
+        return false;
+    }
+
+    @Override
     public void tick() {
         super.tick();
-        if (!level().isClientSide && tickCount >= 70 && !isVehicle()) discard() ;
+        if (!level().isClientSide() && tickCount >= 70 && !isVehicle()) discard() ;
 //        List<Entity> passengers = getPassengers();
 //        for (Entity passenger : passengers) {
 //            if (passenger instanceof LivingEntity) {
@@ -35,12 +43,12 @@ public class EntityFrozenController extends Entity {
     }
 
     @Override
-    protected void readAdditionalSaveData(CompoundTag compound) {
+    protected void readAdditionalSaveData(ValueInput input) {
 
     }
 
     @Override
-    protected void addAdditionalSaveData(CompoundTag compound) {
+    protected void addAdditionalSaveData(ValueOutput output) {
 
     }
 
@@ -69,7 +77,7 @@ public class EntityFrozenController extends Entity {
         if (this.hasPassenger(passenger))
         {
             if (passenger instanceof Player) passenger.setPos(this.getX(), this.getY(), this.getZ());
-            else passenger.absMoveTo(this.getX(), this.getY(), this.getZ(), this.getYRot(), this.getXRot());
+            else passenger.snapTo(this.getX(), this.getY(), this.getZ(), this.getYRot(), this.getXRot());
         }
     }
 }

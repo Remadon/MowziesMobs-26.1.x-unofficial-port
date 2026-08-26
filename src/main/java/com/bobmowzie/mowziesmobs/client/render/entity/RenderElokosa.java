@@ -1,24 +1,29 @@
 package com.bobmowzie.mowziesmobs.client.render.entity;
 
 import com.bobmowzie.mowziesmobs.client.model.entity.ModelElokosa;
-import com.bobmowzie.mowziesmobs.client.model.tools.geckolib.MowzieGeoBone;
 import com.bobmowzie.mowziesmobs.client.render.entity.layer.ElokosaHandSymbolGeoLayer;
 import com.bobmowzie.mowziesmobs.client.render.entity.layer.ElokosaTransformGeoLayer;
 import com.bobmowzie.mowziesmobs.server.entity.elokosa.EntityElokosa;
-import com.bobmowzie.mowziesmobs.server.entity.umvuthana.EntityUmvuthana;
-import com.mojang.blaze3d.vertex.PoseStack;
-import net.minecraft.client.Minecraft;
-import net.minecraft.client.renderer.MultiBufferSource;
+import com.geckolib.renderer.base.RenderPassInfo;
+import com.geckolib.renderer.layer.builtin.AutoGlowingGeoLayer;
 import net.minecraft.client.renderer.culling.Frustum;
 import net.minecraft.client.renderer.entity.EntityRendererProvider;
-import net.minecraft.resources.ResourceLocation;
+import net.minecraft.client.renderer.entity.state.LivingEntityRenderState;
 import net.minecraft.util.Mth;
 import net.minecraft.world.phys.Vec3;
-import org.jetbrains.annotations.NotNull;
-import org.joml.Vector3d;
-import software.bernie.geckolib.renderer.layer.AutoGlowingGeoLayer;
+import org.jspecify.annotations.Nullable;
 
-public class RenderElokosa extends MowzieGeoEntityRenderer<EntityElokosa> {
+/**
+ * PORTING NOTE: old `render(...)`/`renderUpdates(...)` overrides removed - the former added nothing beyond the
+ * default `super.render(...)` call, and the latter (copying each "droolPosN" bone's rendered world position onto
+ * the matching entry of `entity.droolPositions`) is now done via {@link #registerBonePositionListeners}, the
+ * GeckoLib-5-correct replacement for reading a bone's live world position - see MowzieGeoEntityRenderer.java and
+ * PORTING_NOTES.md "MowzieGeoBone is now a WRAPPER" section (bone pose data is only valid during the live render
+ * traversal, not after `render()` returns any more). `getShadowRadius(EntityElokosa)` used to read
+ * `entity.getNightForm()` directly - since `getShadowRadius` is now renderState-only, that flag is captured into a
+ * custom {@link ElokosaRenderState} during {@link #addRenderData} instead.
+ */
+public class RenderElokosa extends MowzieGeoEntityRenderer<EntityElokosa, RenderElokosa.ElokosaRenderState> {
     public RenderElokosa(EntityRendererProvider.Context mgr) {
         super(mgr, new ModelElokosa());
         renderLayers.addLayer(new AutoGlowingGeoLayer<>(this));
@@ -28,27 +33,32 @@ public class RenderElokosa extends MowzieGeoEntityRenderer<EntityElokosa> {
     }
 
     @Override
-    public @NotNull ResourceLocation getTextureLocation(EntityElokosa entity) {
-        return this.getMowzieGeoModel().getTextureResource(entity);
+    public ElokosaRenderState createRenderState(EntityElokosa animatable, @Nullable Void relatedObject) {
+        return new ElokosaRenderState();
     }
 
     @Override
-    public void render(EntityElokosa entity, float entityYaw, float partialTick, PoseStack poseStack, MultiBufferSource bufferSource, int packedLight) {
-        super.render(entity, entityYaw, partialTick, poseStack, bufferSource, packedLight);
+    public void addRenderData(EntityElokosa animatable, @Nullable Void relatedObject, ElokosaRenderState renderState, float partialTick) {
+        super.addRenderData(animatable, relatedObject, renderState, partialTick);
+
+        renderState.nightForm = animatable.getNightForm();
     }
 
     @Override
-    public void renderUpdates(EntityElokosa entity, float entityYaw, float partialTick, PoseStack poseStack, MultiBufferSource bufferSource, int packedLight) {
-        super.renderUpdates(entity, entityYaw, partialTick, poseStack, bufferSource, packedLight);
+    protected void registerBonePositionListeners(RenderPassInfo<ElokosaRenderState> renderPassInfo, EntityElokosa entity) {
         int index = 1;
+
         for (Vec3[] droolPos : entity.droolPositions) {
             if (droolPos != null && droolPos.length > 0) {
-                MowzieGeoBone droolPosBone = getMowzieGeoModel().getMowzieBone("droolPos" + index);
-                if (droolPosBone != null) {
-                    Vector3d worldPos = droolPosBone.getWorldPosition();
-                    droolPos[0] = new Vec3(worldPos.x, worldPos.y, worldPos.z);
-                }
+                String boneName = "droolPos" + index;
+
+                renderPassInfo.addBonePositionListener(boneName, (worldPos, modelPos, localPos) -> {
+                    if (worldPos != null) {
+                        droolPos[0] = worldPos;
+                    }
+                });
             }
+
             index++;
         }
     }
@@ -73,19 +83,18 @@ public class RenderElokosa extends MowzieGeoEntityRenderer<EntityElokosa> {
     }
 
     @Override
-    protected float getShadowRadius(EntityElokosa entity) {
+    protected float getShadowRadius(ElokosaRenderState renderState) {
         float whichForm = 0;
         if (getMowzieGeoModel().isInitialized()) {
             whichForm = -getMowzieGeoModel().getControllerValue("whichFormController");
         }
         if (whichForm <= 0.1f) {
-            if (entity.getNightForm()) {
-                return 0.9f;
-            }
-            else {
-                return 0.4f;
-            }
+            return renderState.nightForm ? 0.9f : 0.4f;
         }
         return Mth.lerp(whichForm, 0.4f, 0.9f);
+    }
+
+    public static class ElokosaRenderState extends LivingEntityRenderState {
+        public boolean nightForm;
     }
 }

@@ -22,7 +22,7 @@ import net.minecraft.world.entity.LivingEntity;
 import net.minecraft.world.entity.player.Player;
 import net.minecraft.world.item.ItemStack;
 import net.minecraft.world.phys.Vec3;
-import software.bernie.geckolib.animation.RawAnimation;
+import com.geckolib.animation.RawAnimation;
 
 import java.util.List;
 
@@ -47,7 +47,7 @@ public class SupernovaAbility extends HeliomancyAbilityBase {
         getUser().playSound(MMSounds.ENTITY_SUPERNOVA_START.get(), 3f, 1f);
         playAnimation(SUPERNOVA_ANIM);
 
-        if (getLevel().isClientSide) {
+        if (getLevel().isClientSide()) {
             heldItemMainHandVisualOverride = ItemStack.EMPTY;
             heldItemOffHandVisualOverride = ItemStack.EMPTY;
             firstPersonOffHandDisplay = HandDisplay.FORCE_RENDER;
@@ -60,11 +60,11 @@ public class SupernovaAbility extends HeliomancyAbilityBase {
         super.tickUsing();
 
         if (getTicksInUse() < 84) {
-            getUser().addEffect(new MobEffectInstance(MobEffects.MOVEMENT_SLOWDOWN, 2, 4, false, false));
+            getUser().addEffect(new MobEffectInstance(MobEffects.SLOWNESS, 2, 4, false, false));
         }
 
         if (getCurrentSection().sectionType == AbilitySection.AbilitySectionType.STARTUP) {
-            getUser().addEffect(new MobEffectInstance(MobEffects.DAMAGE_RESISTANCE, 2, 1, false, false));
+            getUser().addEffect(new MobEffectInstance(MobEffects.RESISTANCE, 2, 1, false, false));
         }
 
         if (getTicksInUse() == 30) {
@@ -84,7 +84,7 @@ public class SupernovaAbility extends HeliomancyAbilityBase {
         }
 
         // Particle effects
-        if (getLevel().isClientSide) {
+        if (getLevel().isClientSide()) {
             // First person
             if (getUser() == MMCommon.PROXY.getLocalPlayer() && Minecraft.getInstance().options.getCameraType() == CameraType.FIRST_PERSON) {
                 GeckoPlayer geckoPlayer = GeckoPlayer.getGeckoPlayer(getUser(), GeckoPlayer.Perspective.FIRST_PERSON);
@@ -114,7 +114,7 @@ public class SupernovaAbility extends HeliomancyAbilityBase {
     protected void beginSection(AbilitySection section) {
         super.beginSection(section);
         if (section.sectionType == AbilitySection.AbilitySectionType.ACTIVE) {
-            if (!getUser().level().isClientSide) {
+            if (!getUser().level().isClientSide()) {
                 EntitySuperNova superNova = new EntitySuperNova(EntityHandler.SUPER_NOVA.get(), getUser().level(), getUser(), getUser().getX(), getUser().getY() + getUser().getBbHeight()/2f, getUser().getZ());
                 getUser().level().addFreshEntity(superNova);
                 

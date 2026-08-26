@@ -21,7 +21,7 @@ import org.jetbrains.annotations.NotNull;
 
 import java.util.function.Function;
 
-@EventBusSubscriber(bus = EventBusSubscriber.Bus.MOD)
+@EventBusSubscriber
 public class NetworkHandler {
     public static final String PROTOCOL_VERSION = "1";
 
@@ -61,11 +61,14 @@ public class NetworkHandler {
         }
     };
 
+    // PORTING NOTE (1.21.1 -> 26.1.2): FriendlyByteBuf#writeVec3/readVec3 no longer exist (confirmed against real
+    // 26.1.2 FriendlyByteBuf source) - Vec3 now has its own Vec3.STREAM_CODEC (a StreamCodec<ByteBuf, Vec3>),
+    // usable directly against a FriendlyByteBuf since FriendlyByteBuf extends ByteBuf.
     private static void writeVec3Array(FriendlyByteBuf buffer, Vec3[] array) {
         VarInt.write(buffer, array.length);
 
         for (Vec3 vec3 : array) {
-            buffer.writeVec3(vec3);
+            Vec3.STREAM_CODEC.encode(buffer, vec3);
         }
     }
 
@@ -75,7 +78,7 @@ public class NetworkHandler {
 
         // should result in keeping the intended order
         for (int index = 0; index < size; index++) {
-            vec3s[index] = buffer.readVec3();
+            vec3s[index] = Vec3.STREAM_CODEC.decode(buffer);
         }
 
         return vec3s;

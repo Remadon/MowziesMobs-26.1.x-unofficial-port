@@ -34,7 +34,7 @@ public class EntityElokosaFollowerToHowler extends EntityElokosaFollower<EntityE
             registerHuntingTargetGoals();
         }
 
-        if (!this.level().isClientSide && this.level().getDifficulty() == Difficulty.PEACEFUL)
+        if (!this.level().isClientSide() && this.level().getDifficulty() == Difficulty.PEACEFUL)
         {
             this.discard();
         }

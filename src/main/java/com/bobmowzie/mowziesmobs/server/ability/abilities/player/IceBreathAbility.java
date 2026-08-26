@@ -11,7 +11,7 @@ import net.minecraft.world.InteractionHand;
 import net.minecraft.world.entity.LivingEntity;
 import net.minecraft.world.entity.player.Player;
 import net.minecraft.world.item.ItemStack;
-import software.bernie.geckolib.animation.RawAnimation;
+import com.geckolib.animation.RawAnimation;
 
 public class IceBreathAbility extends PlayerAbility {
     protected EntityIceBreath iceBreath;
@@ -34,7 +34,7 @@ public class IceBreathAbility extends PlayerAbility {
         LivingEntity user = getUser();
         if (!getUser().level().isClientSide()) {
             EntityIceBreath iceBreath = new EntityIceBreath(EntityHandler.ICE_BREATH.get(), user.level(), user);
-            iceBreath.absMoveTo(user.getX(), user.getY() + user.getEyeHeight() - 0.5f, user.getZ(), user.getYRot(), user.getXRot());
+            iceBreath.snapTo(user.getX(), user.getY() + user.getEyeHeight() - 0.5f, user.getZ(), user.getYRot(), user.getXRot());
             user.level().addFreshEntity(iceBreath);
             this.iceBreath = iceBreath;
         }

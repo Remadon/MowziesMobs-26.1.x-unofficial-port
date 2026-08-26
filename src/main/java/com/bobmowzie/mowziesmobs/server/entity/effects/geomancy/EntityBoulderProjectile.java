@@ -27,7 +27,8 @@ import net.minecraft.world.phys.AABB;
 import net.minecraft.world.phys.Vec3;
 import org.jetbrains.annotations.NotNull;
 import org.joml.Vector3f;
-import software.bernie.geckolib.animation.AnimatableManager;
+import org.joml.Vector3fc;
+import com.geckolib.animatable.manager.AnimatableManager;
 
 import java.util.ArrayList;
 import java.util.List;
@@ -42,7 +43,7 @@ public class EntityBoulderProjectile extends EntityBoulderBase {
     protected int damage = 10;
 
     private boolean didShootParticles = false;
-    private static final EntityDataAccessor<Vector3f> SHOOT_DIRECTION = SynchedEntityData.defineId(EntityBoulderProjectile.class, EntityDataSerializers.VECTOR3);
+    private static final EntityDataAccessor<Vector3fc> SHOOT_DIRECTION = SynchedEntityData.defineId(EntityBoulderProjectile.class, EntityDataSerializers.VECTOR3);
 
     private List<Entity> hitEntities = new ArrayList<>();
 
@@ -84,8 +85,8 @@ public class EntityBoulderProjectile extends EntityBoulderBase {
     }
 
     @Override
-    protected @NotNull AABB makeBoundingBox() {
-        AABB boundingBox = super.makeBoundingBox();
+    protected @NotNull AABB makeBoundingBox(Vec3 position) {
+        AABB boundingBox = super.makeBoundingBox(position);
         if (shouldExtendBoundsDown()) {
             boundingBox = boundingBox.expandTowards(0, -0.5, 0);
         }
@@ -139,7 +140,7 @@ public class EntityBoulderProjectile extends EntityBoulderBase {
             for (Entity entity : entitiesHit) {
                 if (entity.isRemoved()) continue;
                 if (entity instanceof LivingEntity livingEntity && livingEntity.isDeadOrDying()) continue;
-                if (level().isClientSide) continue;
+                if (level().isClientSide()) continue;
                 if (entity == getCaster()) continue;
                 if (entity.noPhysics) continue;
                 if (!entity.canBeHitByProjectile()) continue;
@@ -149,10 +150,10 @@ public class EntityBoulderProjectile extends EntityBoulderBase {
                 if (hitEntities.contains(entity)) continue;
                 boolean didHurt;
                 if (getCaster() != null) {
-                    didHurt = entity.hurt(damageSources().mobProjectile(this, getCaster()), damage);
+                    didHurt = entity.hurtOrSimulate(damageSources().mobProjectile(this, getCaster()), damage);
                 }
                 else {
-                    didHurt = entity.hurt(damageSources().generic(), damage);
+                    didHurt = entity.hurtOrSimulate(damageSources().generic(), damage);
                 }
                 if (didHurt) hitEntities.add(entity);
                 if (isAlive() && getTier() != GeomancyTier.HUGE) this.explode();
@@ -165,7 +166,7 @@ public class EntityBoulderProjectile extends EntityBoulderBase {
         // Hit blocks
         if (travelling) {
             if (
-                    !level().getEntities(this, getBoundingBox().inflate(0.1), (e) -> (ridingEntities == null || !ridingEntities.contains(e)) && e.canBeCollidedWith() && this.travellingBlockedBy(e)).isEmpty() ||
+                    !level().getEntities(this, getBoundingBox().inflate(0.1), (e) -> (ridingEntities == null || !ridingEntities.contains(e)) && e.canBeCollidedWith(this) && this.travellingBlockedBy(e)).isEmpty() ||
                             Iterables.size(level().getBlockCollisions(this, getBoundingBox().inflate(0.1))) > 0
             ) {
                 this.explode();

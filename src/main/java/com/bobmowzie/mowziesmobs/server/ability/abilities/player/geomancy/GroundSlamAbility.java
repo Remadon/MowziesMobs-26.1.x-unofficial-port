@@ -13,7 +13,7 @@ import net.minecraft.world.entity.LivingEntity;
 import net.minecraft.world.entity.player.Player;
 import net.minecraft.world.level.block.state.BlockState;
 import net.neoforged.neoforge.event.entity.player.PlayerInteractEvent;
-import software.bernie.geckolib.animation.RawAnimation;
+import com.geckolib.animation.RawAnimation;
 
 public class GroundSlamAbility extends PlayerAbility {
     public GroundSlamAbility(AbilityType<Player, ? extends Ability> abilityType, Player user) {
@@ -51,7 +51,7 @@ public class GroundSlamAbility extends PlayerAbility {
                 EntityCameraShake.cameraShake(getUser().level(), getUser().position(), 45, 0.09f, 20, 20);
 
                 BlockState blockBeneath = getUser().level().getBlockState(getUser().blockPosition());
-                if (getUser().level().isClientSide) {
+                if (getUser().level().isClientSide()) {
                     getUser().playSound(SoundEvents.GENERIC_EXPLODE.value(), 1.5f, 1.0f);
                     for(int i = 0; i < 50;i++ ){
                         getUser().level().addParticle(new BlockParticleOption(ParticleTypes.BLOCK, blockBeneath), getUser().getRandomX(5.8D), getUser().getBlockY() + 0.1f, getUser().getRandomZ(5.8D), 0, 0.38d,0);
@@ -72,7 +72,7 @@ public class GroundSlamAbility extends PlayerAbility {
 
     @Override
     public boolean canUse() {
-        if (getUser() instanceof Player && !((Player)getUser()).getInventory().getSelected().isEmpty()) return false;
+        if (getUser() instanceof Player && !((Player)getUser()).getInventory().getSelectedItem().isEmpty()) return false;
         return EffectGeomancy.canUse(getUser()) && getUser().fallDistance > 2 &&super.canUse();
     }
 

@@ -7,9 +7,12 @@ import net.minecraft.client.model.HumanoidModel;
 import net.minecraft.client.model.geom.ModelPart;
 import net.minecraft.client.model.geom.PartPose;
 import net.minecraft.client.model.geom.builders.*;
-import net.minecraft.world.entity.LivingEntity;
+import net.minecraft.client.renderer.entity.state.HumanoidRenderState;
 
-public class WroughtHelmModel<T extends LivingEntity> extends HumanoidModel<T> {
+// PORTING NOTE: HumanoidModel's generic bound changed from `T extends LivingEntity` to `T extends HumanoidRenderState`
+// as part of vanilla's entity-render-state-extraction overhaul (same architecture change GuiGraphics went through -
+// see PORTING_NOTES.md). HumanoidModel now animates against a captured render-state snapshot, not a live entity.
+public class WroughtHelmModel<T extends HumanoidRenderState> extends HumanoidModel<T> {
 
 	public WroughtHelmModel(ModelPart root) {
 		super(root);

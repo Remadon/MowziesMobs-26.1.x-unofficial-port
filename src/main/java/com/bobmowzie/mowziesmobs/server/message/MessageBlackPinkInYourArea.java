@@ -9,9 +9,9 @@ import net.minecraft.core.BlockPos;
 import net.minecraft.network.codec.ByteBufCodecs;
 import net.minecraft.network.codec.StreamCodec;
 import net.minecraft.network.protocol.common.custom.CustomPacketPayload;
-import net.minecraft.resources.ResourceLocation;
+import net.minecraft.resources.Identifier;
 import net.minecraft.world.entity.Entity;
-import net.minecraft.world.entity.vehicle.AbstractMinecart;
+import net.minecraft.world.entity.vehicle.minecart.AbstractMinecart;
 import net.minecraft.world.level.Level;
 import net.minecraft.world.level.block.Blocks;
 import net.minecraft.world.level.block.SoundType;
@@ -20,7 +20,7 @@ import net.neoforged.neoforge.network.handling.IPayloadContext;
 import org.jetbrains.annotations.NotNull;
 
 public record MessageBlackPinkInYourArea(int entityId) implements CustomPacketPayload {
-    public static final CustomPacketPayload.Type<MessageBlackPinkInYourArea> TYPE = new CustomPacketPayload.Type<>(ResourceLocation.fromNamespaceAndPath(MMCommon.MODID, "message_black_pink_in_your_area"));
+    public static final CustomPacketPayload.Type<MessageBlackPinkInYourArea> TYPE = new CustomPacketPayload.Type<>(Identifier.fromNamespaceAndPath(MMCommon.MODID, "message_black_pink_in_your_area"));
     public static final StreamCodec<ByteBuf, MessageBlackPinkInYourArea> STREAM_CODEC = StreamCodec.composite(
             ByteBufCodecs.INT,
             MessageBlackPinkInYourArea::entityId,

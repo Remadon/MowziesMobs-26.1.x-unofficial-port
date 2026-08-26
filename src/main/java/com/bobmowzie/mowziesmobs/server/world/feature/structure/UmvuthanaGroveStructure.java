@@ -3,7 +3,7 @@ package com.bobmowzie.mowziesmobs.server.world.feature.structure;
 import com.bobmowzie.mowziesmobs.server.config.ConfigHandler;
 import com.mojang.serialization.MapCodec;
 import net.minecraft.core.BlockPos;
-import net.minecraft.resources.ResourceLocation;
+import net.minecraft.resources.Identifier;
 import net.minecraft.world.level.LevelHeightAccessor;
 import net.minecraft.world.level.block.Rotation;
 import net.minecraft.world.level.chunk.ChunkGenerator;
@@ -30,8 +30,9 @@ public class UmvuthanaGroveStructure extends MowzieStructure {
         Rotation rotation = Rotation.values()[context.random().nextInt(Rotation.values().length)];
 
         //Turns the chunk coordinates into actual coordinates we can use. (Gets center of that chunk)
-        int x = (context.chunkPos().x << 4) + 7;
-        int z = (context.chunkPos().z << 4) + 7;
+        // PORTING NOTE (1.21.1 -> 26.1.2): ChunkPos is now a record - use x()/z() accessors, not fields.
+        int x = (context.chunkPos().x() << 4) + 7;
+        int z = (context.chunkPos().z() << 4) + 7;
         BlockPos centerPos = new BlockPos(x, 1, z);
 
         ChunkGenerator generator = context.chunkGenerator();
@@ -94,7 +95,7 @@ public class UmvuthanaGroveStructure extends MowzieStructure {
                 pitPos = posToSurface(generator, pitPos, heightLimitView, context.randomState());
                 int pitOceanFloorY = generator.getBaseHeight(pitPos.getX(), pitPos.getZ(), Heightmap.Types.OCEAN_FLOOR_WG, heightLimitView, context.randomState());
                 if (pitOceanFloorY < pitPos.getY()) continue;
-                ResourceLocation whichPit = UmvuthanaGrovePieces.FIREPIT_SMALL[random.nextInt(UmvuthanaGrovePieces.FIREPIT_SMALL.length)];
+                Identifier whichPit = UmvuthanaGrovePieces.FIREPIT_SMALL[random.nextInt(UmvuthanaGrovePieces.FIREPIT_SMALL.length)];
                 StructurePiece piece = UmvuthanaGrovePieces.addPieceCheckBounds(whichPit, context.structureTemplateManager(), pitPos, Rotation.values()[random.nextInt(Rotation.values().length)], builder, context.random());
                 if (piece != null) {
                     break;
@@ -114,7 +115,7 @@ public class UmvuthanaGroveStructure extends MowzieStructure {
                 stakePos = posToSurface(generator, stakePos, heightLimitView, context.randomState());
                 int stakeOceanFloorY = generator.getBaseHeight(stakePos.getX(), stakePos.getZ(), Heightmap.Types.OCEAN_FLOOR_WG, heightLimitView, context.randomState());
                 if (stakeOceanFloorY < stakePos.getY()) continue;
-                ResourceLocation whichSpike = UmvuthanaGrovePieces.SPIKES[random.nextInt(UmvuthanaGrovePieces.SPIKES.length)];
+                Identifier whichSpike = UmvuthanaGrovePieces.SPIKES[random.nextInt(UmvuthanaGrovePieces.SPIKES.length)];
                 StructurePiece piece = UmvuthanaGrovePieces.addPieceCheckBounds(whichSpike, context.structureTemplateManager(), stakePos, Rotation.values()[random.nextInt(Rotation.values().length)], builder, context.random());
                 if (piece != null) {
                     break;

@@ -31,7 +31,7 @@ import net.minecraft.world.damagesource.DamageSource;
 import net.minecraft.world.entity.Entity;
 import net.minecraft.world.entity.EntityType;
 import net.minecraft.world.entity.LivingEntity;
-import net.minecraft.world.entity.MobSpawnType;
+import net.minecraft.world.entity.EntitySpawnReason;
 import net.minecraft.world.entity.ai.attributes.AttributeInstance;
 import net.minecraft.world.entity.ai.attributes.AttributeSupplier;
 import net.minecraft.world.entity.ai.attributes.Attributes;
@@ -48,19 +48,22 @@ import net.minecraft.world.entity.player.Player;
 import net.minecraft.world.level.Level;
 import net.minecraft.world.level.LevelAccessor;
 import net.minecraft.world.level.block.state.BlockState;
+import net.minecraft.server.level.ServerLevel;
 import net.minecraft.world.level.pathfinder.Path;
 import net.minecraft.world.level.storage.loot.LootTable;
 import net.minecraft.world.phys.Vec3;
 import org.jetbrains.annotations.NotNull;
 import org.jetbrains.annotations.Nullable;
-import software.bernie.geckolib.animatable.GeoEntity;
-import software.bernie.geckolib.animation.Animation;
-import software.bernie.geckolib.animation.AnimationState;
-import software.bernie.geckolib.animation.PlayState;
-import software.bernie.geckolib.animation.RawAnimation;
+import com.geckolib.animatable.GeoEntity;
+import com.geckolib.cache.animation.Animation;
+import com.geckolib.animation.object.LoopType;
+import com.geckolib.animation.state.AnimationTest;
+import com.geckolib.animation.object.PlayState;
+import com.geckolib.animation.RawAnimation;
 
 import java.util.EnumSet;
 import java.util.List;
+import java.util.Optional;
 
 public class EntityBluff extends MowzieGeckoEntity {
     private float allowedHeightOffset = 0.5F;
@@ -86,7 +89,7 @@ public class EntityBluff extends MowzieGeckoEntity {
         groundMoveControl = this.moveControl;
         flyingMoveControl = new FlyingMoveControl(this, 10, true);
 
-        if (world.isClientSide) {
+        if (world.isClientSide()) {
             feetPos = new Vec3[]{new Vec3(0, 0, 0)};
             corePos = new Vec3[]{new Vec3(0, 0, 0)};
         }
@@ -144,9 +147,9 @@ public class EntityBluff extends MowzieGeckoEntity {
     }
 
     @Override
-    protected <E extends GeoEntity> void loopingAnimations(AnimationState<E> event) {
+    protected <E extends GeoEntity> void loopingAnimations(AnimationTest<E> event) {
         super.loopingAnimations(event);
-        event.getController().transitionLength(5);
+        event.controller().setTransitionTicks(5);
     }
 
     @Override
@@ -192,14 +195,14 @@ public class EntityBluff extends MowzieGeckoEntity {
     public void tick() {
         super.tick();
 
-        if (!this.level().isClientSide && this.level().getDifficulty() == Difficulty.PEACEFUL)
+        if (!this.level().isClientSide() && this.level().getDifficulty() == Difficulty.PEACEFUL)
         {
             this.discard() ;
         }
 
         if (getActiveAbilityType() == DIE_ABILITY && getActiveAbility().getTicksInUse() < 14) {
             this.yBodyRot = this.yHeadRot = this.yRotO;
-            if (level().isClientSide) {
+            if (level().isClientSide()) {
                 for (int i = 0; i < 4; i++) {
                     if (random.nextFloat() < 0.1f) {
                         AdvancedParticleBase.spawnParticle(level(), ParticleHandler.PIXEL, getRandomX(0.4f), getY() + 1f, getRandomZ(0.4f), 0f, random.nextFloat() / 15f, 0f, true, 0f, 0, 0f, 0, 1.3 + (random.nextFloat()*1f), 163d / 256d, 247d / 256d, 74d / 256d, 0.5, 0.9, 17 + random.nextFloat() * 10, true, true, new ParticleComponent[]{
@@ -217,7 +220,7 @@ public class EntityBluff extends MowzieGeckoEntity {
             }
         }
 
-        if (this.level().isClientSide && isAlive()) {
+        if (this.level().isClientSide() && isAlive()) {
             if (feetPos != null && feetPos.length > 0) {
                 feetPos[0] = position().add(0, 0.05f, 0);
                 if (tickCount % 4 == 0) {
@@ -254,9 +257,9 @@ public class EntityBluff extends MowzieGeckoEntity {
     }
 
     @Override
-    public boolean hurt(DamageSource source, float damage) {
+    public boolean hurtServer(ServerLevel level, DamageSource source, float damage) {
         if (source == damageSources().fall()) return false;
-        return super.hurt(source, damage);
+        return super.hurtServer(level, source, damage);
     }
 
     public void aiStep() {
@@ -268,17 +271,12 @@ public class EntityBluff extends MowzieGeckoEntity {
     }
 
     @Override
-    protected @NotNull ResourceKey<LootTable> getDefaultLootTable() {
-        return LootTableHandler.BLUFF;
-    }
-
-    @Override
-    public boolean canBeCollidedWith() {
+    public boolean canBeCollidedWith(@Nullable Entity other) {
         return true;
     }
 
     @Override
-    public boolean checkSpawnRules(LevelAccessor world, MobSpawnType reason) {
+    public boolean checkSpawnRules(LevelAccessor world, EntitySpawnReason reason) {
         return super.checkSpawnRules(world, reason) && getEntitiesNearby(EntitySculptor.class, 8,  8, 8, 8).isEmpty() && world.getDifficulty() != Difficulty.PEACEFUL;
     }
 
@@ -301,8 +299,8 @@ public class EntityBluff extends MowzieGeckoEntity {
             super(abilityType, user, SECTION_TRACK);
         }
 
-        private static final RawAnimation ATTACK_START_ANIMATION = RawAnimation.begin().then("attack_start", Animation.LoopType.HOLD_ON_LAST_FRAME);
-        private static final RawAnimation ATTACK_END_ANIMATION = RawAnimation.begin().then("attack_end", Animation.LoopType.HOLD_ON_LAST_FRAME);
+        private static final RawAnimation ATTACK_START_ANIMATION = RawAnimation.begin().then("attack_start", LoopType.HOLD_ON_LAST_FRAME);
+        private static final RawAnimation ATTACK_END_ANIMATION = RawAnimation.begin().then("attack_end", LoopType.HOLD_ON_LAST_FRAME);
 
         @Override
         public void start() {
@@ -333,7 +331,8 @@ public class EntityBluff extends MowzieGeckoEntity {
                 fallSpeed -= 2;
                 fallSpeed = Math.max(fallSpeed, -7);
                 getUser().setDeltaMovement(0, fallSpeed, 0);
-                getUser().hasImpulse = true;
+                // FIXME 26.1.2 port: Entity#hasImpulse was removed entirely with no direct replacement found;
+                // setDeltaMovement above should still apply the velocity, just without this manual sync flag.
             }
             if (getCurrentSection().sectionType == AbilitySection.AbilitySectionType.MISC) {
                 if (getUser().onGround()) {
@@ -343,9 +342,9 @@ public class EntityBluff extends MowzieGeckoEntity {
         }
 
         @Override
-        public <E extends GeoEntity> PlayState animationPredicate(AnimationState<E> e, GeckoPlayer.Perspective perspective) {
+        public <E extends GeoEntity> PlayState animationPredicate(AnimationTest<E> e, GeckoPlayer.Perspective perspective) {
             if (getCurrentSection().sectionType == AbilitySection.AbilitySectionType.STARTUP) {
-                e.getController().transitionLength(4);
+                e.controller().setTransitionTicks(4);
             }
             return super.animationPredicate(e, perspective);
         }
@@ -367,7 +366,7 @@ public class EntityBluff extends MowzieGeckoEntity {
                     damage = damage * ConfigHandler.COMMON.MOBS.BLUFF.combatConfig.attackMultiplier.get();
                     for (Entity entity : entitiesHit) {
                         if (entity instanceof EntityBluff) continue;
-                        entity.hurt(getUser().damageSources().mobAttack(getUser()), (float) damage);
+                        entity.hurtOrSimulate(getUser().damageSources().mobAttack(getUser()), (float) damage);
                     }
                 }
 

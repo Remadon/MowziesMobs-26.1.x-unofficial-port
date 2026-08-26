@@ -1,111 +1,131 @@
 package com.bobmowzie.mowziesmobs.client.render.entity;
 
 import com.bobmowzie.mowziesmobs.MMCommon;
-import com.bobmowzie.mowziesmobs.client.model.entity.ModelUmvuthi;
 import com.bobmowzie.mowziesmobs.client.model.tools.geckolib.MowzieGeoBone;
 import com.bobmowzie.mowziesmobs.client.render.MMRenderType;
 import com.bobmowzie.mowziesmobs.client.render.entity.layer.GeckoSunblockLayer;
 import com.bobmowzie.mowziesmobs.client.render.entity.layer.UmvuthiSunLayer;
 import com.bobmowzie.mowziesmobs.server.entity.umvuthana.EntityUmvuthi;
+import com.geckolib.renderer.base.RenderPassInfo;
 import com.ilexiconn.llibrary.client.util.ClientUtils;
 import com.mojang.blaze3d.vertex.PoseStack;
 import com.mojang.blaze3d.vertex.VertexConsumer;
 import net.minecraft.client.Minecraft;
-import net.minecraft.client.renderer.MultiBufferSource;
+import net.minecraft.client.renderer.SubmitNodeCollector;
 import net.minecraft.client.renderer.culling.Frustum;
 import net.minecraft.client.renderer.entity.EntityRendererProvider;
+import net.minecraft.client.renderer.entity.state.LivingEntityRenderState;
+import net.minecraft.client.renderer.rendertype.RenderType;
+import net.minecraft.client.renderer.state.level.CameraRenderState;
 import net.minecraft.client.renderer.texture.OverlayTexture;
-import net.minecraft.resources.ResourceLocation;
+import net.minecraft.resources.Identifier;
 import net.minecraft.world.phys.Vec3;
 import org.joml.Matrix3f;
 import org.joml.Matrix4f;
 import org.joml.Quaternionf;
-import org.joml.Vector3d;
 
-public class RenderUmvuthi extends MowzieGeoEntityRenderer<EntityUmvuthi> {
-    public static final ResourceLocation TEXTURE = ResourceLocation.fromNamespaceAndPath(MMCommon.MODID, "textures/entity/umvuthi.png");
-    public static final ResourceLocation SUN = ResourceLocation.fromNamespaceAndPath(MMCommon.MODID, "textures/effects/sun_effect.png");
+/**
+ * PORTING NOTE: the "burst" flare quad this used to draw directly inside `render()` (before calling
+ * `super.render()`) is now drawn by overriding `submit(...)` (calling `super.submit(...)` at the end, matching the
+ * old relative ordering) and submitting the quad geometry via `SubmitNodeCollector#submitCustomGeometry` (see
+ * PORTING_NOTES.md architecture section). The camera-facing quaternion used to come from
+ * `this.entityRenderDispatcher.cameraOrientation()`; `submit(...)` now receives a `CameraRenderState` directly,
+ * which carries the same orientation as a public field (`cameraState.orientation`). `renderUpdates(...)` (bone
+ * world-position reads for `headPos`/`betweenHandPos`, plus the rattle-sound bone rotation read) is replaced with
+ * {@link #registerBonePositionListeners} - see RenderElokosa.java/RenderUmvuthana.java for the same pattern applied
+ * to sibling entities, including the "rotation reads have no listener equivalent, kept best-effort" caveat that
+ * applies to the `maskTwitcher` read here too.
+ */
+public class RenderUmvuthi extends MowzieGeoEntityRenderer<EntityUmvuthi, LivingEntityRenderState> {
+    public static final Identifier TEXTURE = Identifier.fromNamespaceAndPath(MMCommon.MODID, "textures/entity/umvuthi.png");
+    public static final Identifier SUN = Identifier.fromNamespaceAndPath(MMCommon.MODID, "textures/effects/sun_effect.png");
 
     public static final float BURST_RADIUS = 3.5f;
     public static final int BURST_FRAME_COUNT = 10;
     public static final int BURST_START_FRAME = 12;
-    private MultiBufferSource source;
-    private EntityUmvuthi entity;
-
 
     public RenderUmvuthi(EntityRendererProvider.Context mgr) {
-        super(mgr, new ModelUmvuthi());
-        this.addRenderLayer(new FrozenRenderHandler.GeckoLayerFrozen<>(this, mgr));
-        this.addRenderLayer(new GeckoSunblockLayer(this, mgr));
-        this.addRenderLayer(new UmvuthiSunLayer(this));
+        super(mgr, new com.bobmowzie.mowziesmobs.client.model.entity.ModelUmvuthi());
+        this.withRenderLayer(new FrozenRenderHandler.GeckoLayerFrozen<>(this, mgr));
+        this.withRenderLayer(new GeckoSunblockLayer(this, mgr));
+        this.withRenderLayer(new UmvuthiSunLayer(this));
 
         this.shadowRadius = 1.0f;
     }
 
     @Override
-    public ResourceLocation getTextureLocation(EntityUmvuthi entity) {
-        return this.getMowzieGeoModel().getTextureResource(entity);
-    }
+    public void submit(LivingEntityRenderState renderState, PoseStack poseStack, SubmitNodeCollector renderTasks, CameraRenderState cameraState) {
+        // NOTE: `isInvisible`/`activeAbilityType`/`ticksInUse` are entity-instance data; since `submit` only has the
+        // renderState, this reads the equivalent LivingEntityRenderState.isInvisible flag but skips the ability-type
+        // gated burst effect entirely if that data isn't otherwise available. See addRenderData below - the burst
+        // fields are captured there onto a fresh local via renderState-carried booleans would require a custom
+        // RenderState; kept simple by re-deriving from the live entity captured through registerBonePositionListeners
+        // is NOT possible here (submit has no entity access) - burst rendering is therefore driven from
+        // registerBonePositionListeners's captured flags stored directly on `this` (see fields below). This mirrors
+        // the one-frame-old-data tradeoff already accepted elsewhere in this port for similar cases.
+        if (showBurst && !renderState.isInvisible) {
+            poseStack.pushPose();
+            Quaternionf quat = new Quaternionf(cameraState.orientation);
+            poseStack.mulPose(quat);
+            poseStack.translate(0, 1, 0);
+            poseStack.scale(0.8f, 0.8f, 0.8f);
 
-    @Override
-    public void render(EntityUmvuthi umvuthi, float entityYaw, float delta, PoseStack matrixStackIn, MultiBufferSource bufferIn, int packedLightIn) {
-        source = bufferIn;
-        this.entity = umvuthi;
-        if (!umvuthi.isInvisible()) {
-            if (umvuthi.getActiveAbilityType() == EntityUmvuthi.SOLAR_FLARE_ABILITY && umvuthi.getActiveAbility().getTicksInUse() > BURST_START_FRAME && umvuthi.getActiveAbility().getTicksInUse() < BURST_START_FRAME + BURST_FRAME_COUNT - 1) {
-                matrixStackIn.pushPose();
-                Quaternionf quat = this.entityRenderDispatcher.cameraOrientation();
-                matrixStackIn.mulPose(quat);
-                matrixStackIn.translate(0, 1, 0);
-                matrixStackIn.scale(0.8f, 0.8f, 0.8f);
-                VertexConsumer ivertexbuilder = bufferIn.getBuffer(MMRenderType.getSolarFlare(RenderSunstrike.TEXTURE));
-                PoseStack.Pose matrixstack$entry = matrixStackIn.last();
-                Matrix4f matrix4f = matrixstack$entry.pose();
-                Matrix3f matrix3f = matrixstack$entry.normal();
-                drawBurst(matrix4f, matrix3f, ivertexbuilder, umvuthi.getActiveAbility().getTicksInUse() - BURST_START_FRAME + delta, packedLightIn);
-                matrixStackIn.popPose();
-            }
+            RenderType renderType = MMRenderType.getSolarFlare(TEXTURE);
+            float burstFrame = burstTicksInUse;
+            int packedLight = renderState.lightCoords;
+
+            renderTasks.submitCustomGeometry(poseStack, renderType, (pose, vertexConsumer) -> {
+                Matrix4f matrix4f = pose.pose();
+                Matrix3f matrix3f = new Matrix3f();
+                drawBurst(matrix4f, matrix3f, vertexConsumer, burstFrame, packedLight);
+            });
+            poseStack.popPose();
         }
 
-//        matrixStackIn.pushPose();
-//        VertexConsumer ivertexbuilder = bufferIn.getBuffer(MMRenderType.getSolarFlare( ResourceLocation.fromNamespaceAndPath(MowziesMobs.MODID, "textures/effects/super_nova_8.png")));
-//        PoseStack.Pose matrixstack$entry = matrixStackIn.last();
-//        matrixStackIn.scale(1.2f,1.2f,1.2f);
-//        Matrix4f matrix4f = matrixstack$entry.pose();
-//        Matrix3f matrix3f = matrixstack$entry.normal();
-//        drawSun(matrix4f, matrix3f, ivertexbuilder, packedLightIn);
-//        matrixStackIn.popPose();
-        super.render(umvuthi, entityYaw, delta, matrixStackIn, bufferIn, packedLightIn);
+        super.submit(renderState, poseStack, renderTasks, cameraState);
     }
 
-    @Override
-    public void renderUpdates(EntityUmvuthi umvuthi, float entityYaw, float partialTick, PoseStack poseStack, MultiBufferSource bufferSource, int packedLight) {
-        super.renderUpdates(entity, entityYaw, partialTick, poseStack, bufferSource, packedLight);
-        MowzieGeoBone sunRender = getMowzieGeoModel().getMowzieBone("sun_render");
-        Vector3d sunRenderPos = sunRender.getWorldPosition();
-        if (umvuthi.headPos != null && umvuthi.headPos.length > 0)
-            umvuthi.headPos[0] = new Vec3(sunRenderPos.x, sunRenderPos.y, sunRenderPos.z);
+    // Captured each frame from the live entity (see registerBonePositionListeners) since `submit` has no entity access.
+    private boolean showBurst = false;
+    private float burstTicksInUse = 0;
 
-        if (umvuthi.getActiveAbilityType() == EntityUmvuthi.SUPERNOVA_ABILITY && umvuthi.betweenHandPos != null && umvuthi.betweenHandPos.length > 0) {
-            Vector3d novaRenderPos = getMowzieGeoModel().getMowzieBone("superNovaCenter").getWorldPosition();
-            // Blend between sun position and animated supernova position
-            float blendStart = 4;
-            float blendDuration = 4;
-            int ticksInUse = umvuthi.getActiveAbility().getTicksInUse();
-            if (ticksInUse <= blendDuration + blendStart) {
-                Vec3 sunRenderPosVec3 = new Vec3(sunRenderPos.x, sunRenderPos.y, sunRenderPos.z);
-                Vec3 novaRenderPosVec3 = new Vec3(novaRenderPos.x, novaRenderPos.y, novaRenderPos.z);
-                float alpha = (umvuthi.getActiveAbility().getTicksInUse() + partialTick - blendStart) / (blendDuration);
-                alpha = Math.max(0, alpha);
-                Vec3 newPos = novaRenderPosVec3.add(sunRenderPosVec3.subtract(novaRenderPosVec3).scale(1.0 - alpha));
-                novaRenderPos.set(newPos.x, newPos.y, newPos.z);
+    @Override
+    protected void registerBonePositionListeners(RenderPassInfo<LivingEntityRenderState> renderPassInfo, EntityUmvuthi umvuthi) {
+        showBurst = !umvuthi.isInvisible()
+                && umvuthi.getActiveAbilityType() == EntityUmvuthi.SOLAR_FLARE_ABILITY
+                && umvuthi.getActiveAbility().getTicksInUse() > BURST_START_FRAME
+                && umvuthi.getActiveAbility().getTicksInUse() < BURST_START_FRAME + BURST_FRAME_COUNT - 1;
+        burstTicksInUse = umvuthi.getActiveAbility() != null ? umvuthi.getActiveAbility().getTicksInUse() - BURST_START_FRAME : 0;
+
+        renderPassInfo.addBonePositionListener("sun_render", (worldPos, modelPos, localPos) -> {
+            if (worldPos != null && umvuthi.headPos != null && umvuthi.headPos.length > 0) {
+                umvuthi.headPos[0] = worldPos;
             }
-            umvuthi.betweenHandPos[0] = new Vec3(novaRenderPos.x, novaRenderPos.y, novaRenderPos.z);
-        }
+
+            if (worldPos != null && umvuthi.getActiveAbilityType() == EntityUmvuthi.SUPERNOVA_ABILITY && umvuthi.betweenHandPos != null && umvuthi.betweenHandPos.length > 0) {
+                MowzieGeoBone novaCenter = getMowzieGeoModel().getMowzieBone("superNovaCenter");
+                if (novaCenter != null) {
+                    // NOTE: superNovaCenter's world position is read directly here (not via its own listener) since
+                    // blending needs both positions together - see PORTING_NOTES.md bone-snapshot-timing caveat,
+                    // this specific read may be one-frame-stale relative to sun_render's listener-provided value.
+                    org.joml.Vector3f novaRenderPosModel = novaCenter.getModelSpaceMatrix().getTranslation(new org.joml.Vector3f());
+                    Vec3 novaRenderPos = new Vec3(novaRenderPosModel.x, novaRenderPosModel.y, novaRenderPosModel.z);
+                    float blendStart = 4;
+                    float blendDuration = 4;
+                    int ticksInUse = umvuthi.getActiveAbility().getTicksInUse();
+                    Vec3 finalNovaPos = novaRenderPos;
+                    if (ticksInUse <= blendDuration + blendStart) {
+                        float alpha = Math.max(0, (ticksInUse - blendStart) / blendDuration);
+                        finalNovaPos = novaRenderPos.add(worldPos.subtract(novaRenderPos).scale(1.0 - alpha));
+                    }
+                    umvuthi.betweenHandPos[0] = finalNovaPos;
+                }
+            }
+        });
 
         if (!Minecraft.getInstance().isPaused()) {
             MowzieGeoBone mask = getMowzieGeoModel().getMowzieBone("maskTwitcher");
-            umvuthi.updateRattleSound(mask.getRotZ());
+            if (mask != null) umvuthi.updateRattleSound(mask.getRotZ());
         }
     }
 
@@ -115,20 +135,6 @@ public class RenderUmvuthi extends MowzieGeoEntityRenderer<EntityUmvuthi> {
         if (!result) umvuthi.headPos[0] = umvuthi.position().add(0, umvuthi.getEyeHeight(), 0);
         return result;
     }
-
-    //    @Override
-//    public void renderRecursively(GeoBone bone, PoseStack poseStack, VertexConsumer buffer, int packedLight, int packedOverlay, float red, float green, float blue, float alpha) {
-//        super.renderRecursively(bone, poseStack, buffer, packedLight, packedOverlay, red, green, blue, alpha);
-//        if (bone.getName().equals("sun")){
-//            Vector3d pos = bone.getWorldPosition();
-//            Vec3 vec = new Vec3(pos.x,pos.y,pos.z);
-//            if(this.entity!=null){
-//                if(this.entity.level.isClientSide && this.entity.getRandom().nextFloat() < 0.5f){
-//                    this.entity.level.addParticle(ParticleTypes.FLAME, vec.x, vec.y, vec.z, 0d, 0d, 0d );
-//                }
-//            }
-//        }
-//    }
 
     public static void drawBurst(Matrix4f matrix4f, Matrix3f matrix3f, VertexConsumer builder, float tick, int packedLightIn) {
         int dissapateFrame = 6;

@@ -13,19 +13,21 @@ import com.bobmowzie.mowziesmobs.server.entity.umvuthana.trade.TradeStore;
 import com.bobmowzie.mowziesmobs.server.inventory.ContainerUmvuthanaTrade;
 import com.bobmowzie.mowziesmobs.server.item.UmvuthanaMask;
 import net.minecraft.core.BlockPos;
+import net.minecraft.core.UUIDUtil;
 import net.minecraft.nbt.CompoundTag;
 import net.minecraft.network.chat.Component;
 import net.minecraft.network.syncher.EntityDataAccessor;
 import net.minecraft.network.syncher.EntityDataSerializers;
 import net.minecraft.network.syncher.SynchedEntityData;
+import net.minecraft.server.level.ServerLevel;
 import net.minecraft.server.players.OldUsersConverter;
 import net.minecraft.world.*;
 import net.minecraft.world.entity.*;
 import net.minecraft.world.entity.ai.goal.MoveTowardsRestrictionGoal;
 import net.minecraft.world.entity.ai.goal.target.NearestAttackableTargetGoal;
-import net.minecraft.world.entity.monster.AbstractSkeleton;
+import net.minecraft.world.entity.monster.skeleton.AbstractSkeleton;
 import net.minecraft.world.entity.monster.Enemy;
-import net.minecraft.world.entity.monster.Zombie;
+import net.minecraft.world.entity.monster.zombie.Zombie;
 import net.minecraft.world.entity.player.Inventory;
 import net.minecraft.world.entity.player.Player;
 import net.minecraft.world.inventory.AbstractContainerMenu;
@@ -33,6 +35,8 @@ import net.minecraft.world.item.ItemStack;
 import net.minecraft.world.item.Items;
 import net.minecraft.world.level.Level;
 import net.minecraft.world.level.ServerLevelAccessor;
+import net.minecraft.world.level.storage.ValueInput;
+import net.minecraft.world.level.storage.ValueOutput;
 import org.jetbrains.annotations.NotNull;
 
 import javax.annotation.Nullable;
@@ -67,7 +71,7 @@ public class EntityUmvuthanaMinion extends EntityUmvuthana implements LeaderSuns
 
     private static final EntityDataAccessor<Optional<Trade>> TRADE = SynchedEntityData.defineId(EntityUmvuthanaMinion.class, EntityHandler.OPTIONAL_TRADE.value());
     //    private static final DataParameter<Integer> NUM_SALES = EntityDataManager.createKey(EntityBarakoaya.class, DataSerializers.VARINT);
-    private static final EntityDataAccessor<Optional<UUID>> MISBEHAVED_PLAYER = SynchedEntityData.defineId(EntityUmvuthanaMinion.class, EntityDataSerializers.OPTIONAL_UUID);
+    private static final EntityDataAccessor<Optional<UUID>> MISBEHAVED_PLAYER = SynchedEntityData.defineId(EntityUmvuthanaMinion.class, com.bobmowzie.mowziesmobs.server.entity.EntityHandler.OPTIONAL_UUID.get());
     private static final EntityDataAccessor<Boolean> IS_TRADING = SynchedEntityData.defineId(EntityUmvuthanaMinion.class, EntityDataSerializers.BOOLEAN);
 
     //TODO: Sale limits. After X sales, go out of stock and change trade.
@@ -102,10 +106,10 @@ public class EntityUmvuthanaMinion extends EntityUmvuthana implements LeaderSuns
     @Override
     protected void registerTargetGoals() {
         targetSelector.addGoal(3, new UmvuthanaHurtByTargetAI(this, true));
-        this.targetSelector.addGoal(4, new NearestAttackableTargetGoal<Player>(this, Player.class, 0, true, true, target -> {
+        this.targetSelector.addGoal(4, new NearestAttackableTargetGoal<Player>(this, Player.class, 0, true, true, (target, targetLevel) -> {
             if (target instanceof Player) {
                 if (this.level().getDifficulty() == Difficulty.PEACEFUL) return false;
-                ItemStack headArmorStack = ((Player) target).getInventory().armor.get(3);
+                ItemStack headArmorStack = ((Player) target).getItemBySlot(EquipmentSlot.HEAD);
                 return !(headArmorStack.getItem() instanceof UmvuthanaMask) || target == getMisbehavedPlayer();
             }
             return true;
@@ -189,7 +193,7 @@ public class EntityUmvuthanaMinion extends EntityUmvuthana implements LeaderSuns
     public void openGUI(Player playerEntity) {
         setCustomer(playerEntity);
         MMCommon.PROXY.setReferencedMob(this);
-        if (!this.level().isClientSide && getTarget() == null && isAlive()) {
+        if (!this.level().isClientSide() && getTarget() == null && isAlive()) {
             playerEntity.openMenu(new MenuProvider() {
                 @Override
                 public AbstractContainerMenu createMenu(int id, Inventory playerInventory, Player player) {
@@ -208,7 +212,9 @@ public class EntityUmvuthanaMinion extends EntityUmvuthana implements LeaderSuns
     protected InteractionResult mobInteract(Player player, InteractionHand hand) {
         if (canTradeWith(player) && getTarget() == null && isAlive()) {
             openGUI(player);
-            return InteractionResult.sidedSuccess(this.level().isClientSide);
+            // NOTE 26.1.2 port: InteractionResult.sidedSuccess(boolean) was removed (sealed interface rewrite);
+            // client-side ~= SUCCESS (local arm swing), server-side ~= CONSUME (no local swing, synced instead).
+            return this.level().isClientSide() ? InteractionResult.SUCCESS : InteractionResult.CONSUME;
         }
         return InteractionResult.PASS;
     }
@@ -223,9 +229,9 @@ public class EntityUmvuthanaMinion extends EntityUmvuthana implements LeaderSuns
 
     @Nullable
     @Override
-    public SpawnGroupData finalizeSpawn(ServerLevelAccessor world, DifficultyInstance difficulty, MobSpawnType reason, @Nullable SpawnGroupData livingData) {
+    public SpawnGroupData finalizeSpawn(ServerLevelAccessor world, DifficultyInstance difficulty, EntitySpawnReason reason, @Nullable SpawnGroupData livingData) {
         tradeStore = DEFAULT;
-        if (reason == MobSpawnType.COMMAND) restrictTo(blockPosition(), 25);
+        if (reason == EntitySpawnReason.COMMAND) setHomeTo(blockPosition(), 25);
         return super.finalizeSpawn(world, difficulty, reason, livingData);
     }
 
@@ -235,41 +241,38 @@ public class EntityUmvuthanaMinion extends EntityUmvuthana implements LeaderSuns
     }
 
     @Override
-    public void addAdditionalSaveData(CompoundTag compound) {
-        super.addAdditionalSaveData(compound);
-        compound.put("tradeStore", tradeStore.serialize(registryAccess()));
+    public void addAdditionalSaveData(ValueOutput output) {
+        super.addAdditionalSaveData(output);
+        output.store("tradeStore", CompoundTag.CODEC, tradeStore.serialize(registryAccess()));
         if (isOfferingTrade()) {
-            compound.put("offeringTrade", getOfferingTrade().serialize(registryAccess()));
+            output.store("offeringTrade", CompoundTag.CODEC, getOfferingTrade().serialize(registryAccess()));
         }
-        compound.putInt("timeOffering", timeOffering);
-        compound.putInt("HomePosX", this.getRestrictCenter().getX());
-        compound.putInt("HomePosY", this.getRestrictCenter().getY());
-        compound.putInt("HomePosZ", this.getRestrictCenter().getZ());
-        compound.putInt("HomeDist", (int) this.getRestrictRadius());
+        output.putInt("timeOffering", timeOffering);
+        output.putInt("HomePosX", this.getHomePosition().getX());
+        output.putInt("HomePosY", this.getHomePosition().getY());
+        output.putInt("HomePosZ", this.getHomePosition().getZ());
+        output.putInt("HomeDist", (int) this.getHomeRadius());
         if (this.getMisbehavedPlayerId() != null) {
-            compound.putUUID("MisbehavedPlayer", this.getMisbehavedPlayerId());
+            output.store("MisbehavedPlayer", UUIDUtil.CODEC, this.getMisbehavedPlayerId());
         }
 //        compound.setInteger("numSales", getNumSales());
     }
 
     @Override
-    public void readAdditionalSaveData(CompoundTag compound) {
-        super.readAdditionalSaveData(compound);
-        tradeStore = TradeStore.deserialize(registryAccess(), compound.getCompound("tradeStore"));
-        setOfferingTrade(Trade.deserialize(registryAccess(), compound.getCompound("offeringTrade")));
-        timeOffering = compound.getInt("timeOffering");
-        int i = compound.getInt("HomePosX");
-        int j = compound.getInt("HomePosY");
-        int k = compound.getInt("HomePosZ");
-        int dist = compound.getInt("HomeDist");
-        this.restrictTo(new BlockPos(i, j, k), dist);
-        UUID uuid;
-        if (compound.hasUUID("MisbehavedPlayer")) {
-            uuid = compound.getUUID("MisbehavedPlayer");
-        } else {
-            String s = compound.getString("MisbehavedPlayer");
-            uuid = OldUsersConverter.convertMobOwnerIfNecessary(this.getServer(), s);
-        }
+    public void readAdditionalSaveData(ValueInput input) {
+        super.readAdditionalSaveData(input);
+        tradeStore = TradeStore.deserialize(registryAccess(), input.read("tradeStore", CompoundTag.CODEC).orElseGet(CompoundTag::new));
+        setOfferingTrade(Trade.deserialize(registryAccess(), input.read("offeringTrade", CompoundTag.CODEC).orElseGet(CompoundTag::new)));
+        timeOffering = input.getIntOr("timeOffering", 0);
+        int i = input.getIntOr("HomePosX", 0);
+        int j = input.getIntOr("HomePosY", 0);
+        int k = input.getIntOr("HomePosZ", 0);
+        int dist = input.getIntOr("HomeDist", 0);
+        this.setHomeTo(new BlockPos(i, j, k), dist);
+        UUID uuid = input.read("MisbehavedPlayer", UUIDUtil.CODEC)
+                .orElseGet(() -> input.getString("MisbehavedPlayer")
+                        .map(s -> OldUsersConverter.convertMobOwnerIfNecessary(this.level() instanceof ServerLevel serverLevel ? serverLevel.getServer() : null, s))
+                        .orElse(null));
 
         if (uuid != null) {
             try {

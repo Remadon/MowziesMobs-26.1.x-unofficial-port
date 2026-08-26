@@ -7,7 +7,8 @@ import com.ilexiconn.llibrary.client.model.tools.AdvancedModelRenderer;
 import com.mojang.blaze3d.vertex.PoseStack;
 import com.mojang.blaze3d.vertex.VertexConsumer;
 import net.minecraft.client.Minecraft;
-import net.minecraft.client.renderer.RenderType;
+import net.minecraft.client.renderer.rendertype.RenderType;
+import net.minecraft.client.renderer.rendertype.RenderTypes;
 import net.minecraft.world.phys.Vec3;
 
 /**
@@ -122,7 +123,7 @@ public class ModelNaga<T extends EntityNaga> extends MowzieEntityModel<T> {
     private DynamicChain tail;
 
     public ModelNaga() {
-        super(RenderType::entityCutout);
+        super(RenderTypes::entityCutoutCull);
         this.textureWidth = 256;
         this.textureHeight = 256;
         this.eyebrow_L = new AdvancedModelRenderer(this, 63, 0);
@@ -1231,7 +1232,7 @@ public class ModelNaga<T extends EntityNaga> extends MowzieEntityModel<T> {
             jawControls();
             wingFoldControls();
 
-            entity.dc.updateChain(Minecraft.getInstance().getTimer().getGameTimeDeltaPartialTick(false), tailOriginal, tailDynamic, 0.5f, 0.5f, 0.5f, 0.97f, 30, true);
+            entity.dc.updateChain(Minecraft.getInstance().getDeltaTracker().getGameTimeDeltaPartialTick(false), tailOriginal, tailDynamic, 0.5f, 0.5f, 0.5f, 0.97f, 30, true);
 
             computeWingWebbing();
 

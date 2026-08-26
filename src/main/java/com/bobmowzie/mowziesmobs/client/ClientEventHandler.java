@@ -2,9 +2,6 @@ package com.bobmowzie.mowziesmobs.client;
 
 import com.bobmowzie.mowziesmobs.MMCommon;
 import com.bobmowzie.mowziesmobs.client.gui.CustomBossBar;
-import com.bobmowzie.mowziesmobs.client.model.entity.ModelGeckoPlayerFirstPerson;
-import com.bobmowzie.mowziesmobs.client.model.entity.ModelGeckoPlayerThirdPerson;
-import com.bobmowzie.mowziesmobs.client.render.MMRenderType;
 import com.bobmowzie.mowziesmobs.client.render.block.SculptorBlockMarking;
 import com.bobmowzie.mowziesmobs.client.render.entity.player.GeckoFirstPersonRenderer;
 import com.bobmowzie.mowziesmobs.client.render.entity.player.GeckoPlayer;
@@ -18,30 +15,25 @@ import com.bobmowzie.mowziesmobs.server.config.ConfigHandler;
 import com.bobmowzie.mowziesmobs.server.entity.effects.EntityCameraShake;
 import com.bobmowzie.mowziesmobs.server.entity.frostmaw.EntityFrozenController;
 import com.bobmowzie.mowziesmobs.server.item.ItemBlowgun;
-import com.mojang.blaze3d.vertex.PoseStack;
-import com.mojang.blaze3d.vertex.SheetedDecalTextureGenerator;
-import com.mojang.blaze3d.vertex.VertexConsumer;
+import com.geckolib.renderer.base.GeoRenderState;
+import com.geckolib.renderer.base.GeoRenderer;
 import it.unimi.dsi.fastutil.longs.Long2ObjectMap;
 import net.minecraft.client.CameraType;
 import net.minecraft.client.Minecraft;
-import net.minecraft.client.gui.GuiGraphics;
-import net.minecraft.client.model.EntityModel;
+import net.minecraft.client.gui.GuiGraphicsExtractor;
 import net.minecraft.client.multiplayer.ClientLevel;
 import net.minecraft.client.player.AbstractClientPlayer;
 import net.minecraft.client.player.LocalPlayer;
-import net.minecraft.client.renderer.block.BlockRenderDispatcher;
-import net.minecraft.client.renderer.texture.OverlayTexture;
-import net.minecraft.client.resources.model.BakedModel;
+import net.minecraft.client.renderer.RenderPipelines;
+import net.minecraft.client.renderer.entity.state.AvatarRenderState;
+import net.minecraft.client.renderer.entity.state.LivingEntityRenderState;
+import net.minecraft.client.renderer.state.level.CameraRenderState;
 import net.minecraft.core.BlockPos;
 import net.minecraft.network.chat.Component;
-import net.minecraft.resources.ResourceLocation;
-import net.minecraft.util.Mth;
-import net.minecraft.util.RandomSource;
+import net.minecraft.resources.Identifier;
+import net.minecraft.world.InteractionHand;
 import net.minecraft.world.entity.LivingEntity;
 import net.minecraft.world.entity.player.Player;
-import net.minecraft.world.level.BlockAndTintGetter;
-import net.minecraft.world.level.block.RenderShape;
-import net.minecraft.world.level.block.state.BlockState;
 import net.minecraft.world.phys.Vec3;
 import net.neoforged.api.distmarker.Dist;
 import net.neoforged.bus.api.EventPriority;
@@ -49,71 +41,76 @@ import net.neoforged.bus.api.SubscribeEvent;
 import net.neoforged.fml.common.EventBusSubscriber;
 import net.neoforged.neoforge.client.event.*;
 import net.neoforged.neoforge.client.gui.VanillaGuiLayers;
-import net.neoforged.neoforge.client.model.data.ModelData;
 import net.neoforged.neoforge.event.tick.LevelTickEvent;
 import net.neoforged.neoforge.event.tick.PlayerTickEvent;
 
 @EventBusSubscriber(value = Dist.CLIENT)
 public class ClientEventHandler {
-    private static final ResourceLocation FROZEN_BLUR = ResourceLocation.withDefaultNamespace("textures/misc/powder_snow_outline.png");
+    private static final Identifier FROZEN_BLUR = Identifier.withDefaultNamespace("textures/misc/powder_snow_outline.png");
 
+    // PORTING NOTE (1.21.1 -> 26.1.2): wiring for the player-render agent's GeckoFirstPersonRenderer/
+    // GeckoRenderPlayer redesign (see those classes' own class javadocs in client/render/entity/player/ for the
+    // full architecture writeup - this comment only covers the wiring performed here).
+    // RenderHandEvent no longer exposes a MultiBufferSource (only getSubmitNodeCollector()), and
+    // GeckoFirstPersonRenderer#renderHands is now a single call covering BOTH hands per frame (GeckoLib 5 no longer
+    // lets a stale bone pose be read for a second, off-hand-only call - see that method's own javadoc) - so this
+    // gates on MAIN_HAND to invoke it exactly once, while still cancelling vanilla rendering for both hands' events
+    // when an ability is active.
     @SubscribeEvent(priority = EventPriority.HIGHEST)
     public static void onHandRender(RenderHandEvent event) {
         if (!ConfigHandler.CLIENT.customPlayerAnims.get()) return;
-        LocalPlayer player = Minecraft.getInstance().player;
+
+        Player player = Minecraft.getInstance().player;
         if (player == null) return;
-        boolean shouldAnimate = false;
-        AbilityData data = DataHandler.getData(player, DataHandler.ABILITY_DATA);
-        shouldAnimate = data.getActiveAbility() != null;
-//        shouldAnimate = (player.ticksExisted / 20) % 2 == 0;
-        if (shouldAnimate) {
-            GeckoPlayer.GeckoPlayerFirstPerson geckoPlayer = GeckoFirstPersonRenderer.GECKO_PLAYER_FIRST_PERSON;
 
-            if (geckoPlayer != null) {
-                ModelGeckoPlayerFirstPerson geckoFirstPersonModel = (ModelGeckoPlayerFirstPerson) geckoPlayer.getModel();
-                GeckoFirstPersonRenderer firstPersonRenderer = (GeckoFirstPersonRenderer) geckoPlayer.getPlayerRenderer();
+        AbilityData abilityData = DataHandler.getData(player, DataHandler.ABILITY_DATA);
+        if (abilityData == null || abilityData.getActiveAbility() == null) return;
 
-                if (geckoFirstPersonModel != null && firstPersonRenderer != null) {
-                    if (!geckoFirstPersonModel.isUsingSmallArms() && player.getSkin().model().name().equals("slim")) {
-                        firstPersonRenderer.setSmallArms();
-                    }
-                    event.setCanceled(true);
+        GeckoPlayer.GeckoPlayerFirstPerson geckoPlayerFirstPerson = GeckoFirstPersonRenderer.GECKO_PLAYER_FIRST_PERSON;
+        if (geckoPlayerFirstPerson == null) return;
+        GeoRenderer<GeckoPlayer, Void, GeoRenderState> renderer = geckoPlayerFirstPerson.getPlayerRenderer();
+        if (!(renderer instanceof GeckoFirstPersonRenderer firstPersonRenderer)) return;
 
-                    if (event.isCanceled()) {
-                        float delta = event.getPartialTick();
-                        float f1 = Mth.lerp(delta, player.xRotO, player.getXRot());
-                        firstPersonRenderer.renderItemInFirstPerson(player, f1, delta, event.getHand(), event.getSwingProgress(), event.getItemStack(), event.getEquipProgress(), event.getPoseStack(), event.getMultiBufferSource(), event.getPackedLight(), geckoPlayer);
-                    }
-                }
-            }
+        event.setCanceled(true);
+
+        if (event.getHand() == InteractionHand.MAIN_HAND) {
+            CameraRenderState cameraState = Minecraft.getInstance().gameRenderer.getGameRenderState().levelRenderState.cameraRenderState;
+            firstPersonRenderer.renderHands((AbstractClientPlayer) player, geckoPlayerFirstPerson, event.getInterpolatedPitch(), event.getPartialTick(), event.getPoseStack(), event.getSubmitNodeCollector(), cameraState, event.getPackedLight());
         }
     }
 
+    // PORTING NOTE: subscribing to the player-specific RenderPlayerEvent.Pre (rather than the generic
+    // RenderLivingEvent.Pre) gives a strongly-typed AvatarRenderState directly, with no live-entity back-reference
+    // (confirmed against real 26.1.2.95 NeoForge source - both dropped getEntity()) - AvatarRenderState.id (set by
+    // vanilla's own AvatarRenderer#extractRenderState) is resolved back to the live entity via
+    // Minecraft.getInstance().level.getEntity(id), per GeckoRenderPlayer's class javadoc wiring note.
     @SubscribeEvent(priority = EventPriority.HIGHEST)
-    public static void renderLivingEvent(RenderLivingEvent.Pre<? extends LivingEntity, ? extends EntityModel<? extends LivingEntity>> event) {
-        if (event.getEntity() instanceof Player player) {
-            if (!ConfigHandler.CLIENT.customPlayerAnims.get()) return;
-            if (ConfigHandler.CLIENT.hidePlayerAnimsInFirstPerson.get() && player == Minecraft.getInstance().player && Minecraft.getInstance().options.getCameraType() == CameraType.FIRST_PERSON) return;
-            float delta = event.getPartialTick();
-            AbilityData abilityData = DataHandler.getData(player, DataHandler.ABILITY_DATA);
-//            if ((player.tickCount / 20) % 2 == 0) {
-            if (abilityData.getActiveAbility() != null) {
-                GeckoPlayer.GeckoPlayerThirdPerson geckoPlayer = DataHandler.getData(player, DataHandler.PLAYER_DATA).getGeckoPlayer();
+    public static void renderLivingEvent(RenderPlayerEvent.Pre<?> event) {
+        if (!ConfigHandler.CLIENT.customPlayerAnims.get()) return;
 
-                if (geckoPlayer != null) {
-                    ModelGeckoPlayerThirdPerson geckoPlayerModel = (ModelGeckoPlayerThirdPerson) geckoPlayer.getModel();
-                    GeckoRenderPlayer animatedPlayerRenderer = (GeckoRenderPlayer) geckoPlayer.getPlayerRenderer();
+        ClientLevel level = Minecraft.getInstance().level;
+        if (level == null) return;
 
-                    if (geckoPlayerModel != null && animatedPlayerRenderer != null) {
-                        event.setCanceled(true);
+        AvatarRenderState renderState = event.getRenderState();
+        if (!(level.getEntity(renderState.id) instanceof Player player)) return;
 
-                        if (event.isCanceled()) {
-                            animatedPlayerRenderer.render((AbstractClientPlayer) event.getEntity(), event.getEntity().getYRot(), delta, event.getPoseStack(), event.getMultiBufferSource(), event.getPackedLight(), geckoPlayer);
-                        }
-                    }
-                }
-            }
+        if (ConfigHandler.CLIENT.hidePlayerAnimsInFirstPerson.get()
+                && player == Minecraft.getInstance().player
+                && Minecraft.getInstance().options.getCameraType() == CameraType.FIRST_PERSON) {
+            return;
         }
+
+        AbilityData abilityData = DataHandler.getData(player, DataHandler.ABILITY_DATA);
+        if (abilityData == null || abilityData.getActiveAbility() == null) return;
+
+        GeckoPlayer geckoPlayer = DataHandler.getData(player, DataHandler.PLAYER_DATA).getGeckoPlayer();
+        if (geckoPlayer == null) return;
+        GeoRenderer<GeckoPlayer, Void, GeoRenderState> renderer = geckoPlayer.getPlayerRenderer();
+        if (!(renderer instanceof GeckoRenderPlayer geckoRenderPlayer)) return;
+
+        event.setCanceled(true);
+        CameraRenderState cameraState = Minecraft.getInstance().gameRenderer.getGameRenderState().levelRenderState.cameraRenderState;
+        geckoRenderPlayer.render((AbstractClientPlayer) player, geckoPlayer, event.getPoseStack(), event.getSubmitNodeCollector(), cameraState, renderState.lightCoords, event.getPartialTick());
     }
 
     @SubscribeEvent
@@ -174,20 +171,37 @@ public class ClientEventHandler {
         }
     }
 
+    /* FIXME 1.21 -> 26.1.2 port: UNRESOLVED, flagged for follow-up.
+        RenderLivingEvent.Pre gained a 3rd type parameter (S extends LivingEntityRenderState) and, critically,
+        DROPPED getEntity() entirely (see the big FIXME above onHandRender for the full writeup of this event's
+        redesign, confirmed against the real NeoForge 26.1.2.95 source). This used to mutate the live entity's
+        rotation/walk-animation/attack-swing fields directly right before vanilla read them for rendering, to
+        visually "lock" a frozen entity's pose every frame.
+
+        Rendering now reads from an already-captured LivingEntityRenderState snapshot (still a plain mutable POJO -
+        confirmed its yRot/xRot/bodyRot/walkAnimationPos/walkAnimationSpeed fields are public and non-final, and
+        ArmedEntityRenderState - the subclass covering humanoids/item-holding mobs - separately has a mutable
+        attackTime field), so mutating THAT would be the natural fix... except this event provides no way to look
+        up which live entity the snapshot belongs to (no entity ID/UUID field on EntityRenderState or its
+        subclasses), and FrozenData is a per-entity NeoForge data attachment that can only be looked up via
+        DataHandler.getData(Entity, ...) - i.e. from the live entity, which is unobtainable here. Checked for a
+        dedicated "extract entity render state" event that might provide both the live entity AND a mutable state
+        object (which would be the correct new hook point, mirroring net.neoforged.neoforge.client.event.
+        ExtractLevelRenderStateEvent / ExtractBlockOutlineRenderStateEvent that exist for other render-state types)
+        - no living-entity equivalent exists in NeoForge 26.1.2.95's client.event package.
+
+        ACTION NEEDED: the likely correct redesign is to move this "pin rotation/animation while frozen" logic out
+        of a render event entirely and into a per-tick hook on the live entity (mirroring how onRenderTick already
+        does exactly this for the local player, just generalized to arbitrary LivingEntity) - set both the current
+        AND previous-tick rotation/animation fields identically every tick so vanilla's own partial-tick
+        interpolation naturally produces a frozen, non-interpolating pose by the time extractRenderState() captures
+        it, without needing this event at all. Not implemented here since it changes the timing/hook entirely
+        (tick-rate vs. every render frame) and needs verification for interpolation smoothness - flagging rather
+        than guessing. Left as a no-op.
+    */
     @SubscribeEvent
-    public static void onRenderLiving(RenderLivingEvent.Pre<?, ?> event) {
-        LivingEntity entity = event.getEntity();
-        FrozenData data = DataHandler.getData(entity, DataHandler.FROZEN_DATA);
-        if (data.getFrozen() && data.getPrevFrozen()) {
-            entity.setYRot(entity.yRotO = data.getFrozenYaw());
-            entity.setXRot(entity.xRotO = data.getFrozenPitch());
-            entity.yHeadRot = entity.yHeadRotO = data.getFrozenYawHead();
-            entity.yBodyRot = entity.yBodyRotO = data.getFrozenRenderYawOffset();
-            entity.attackAnim = entity.oAttackAnim = data.getFrozenSwingProgress();
-            entity.walkAnimation.setSpeed(0);
-            entity.walkAnimation.update(0, 0);
-            entity.setShiftKeyDown(false);
-        }
+    public static void onRenderLiving(RenderLivingEvent.Pre<?, ? extends LivingEntityRenderState, ?> event) {
+        // See FIXME above - no longer possible to resolve the live entity from this event to look up FrozenData.
     }
 
     @SubscribeEvent
@@ -197,8 +211,12 @@ public class ClientEventHandler {
                 FrozenData data = DataHandler.getData(Minecraft.getInstance().player, DataHandler.FROZEN_DATA);
 
                 if (data.getFrozen() && Minecraft.getInstance().options.getCameraType() == CameraType.FIRST_PERSON) {
-                    GuiGraphics graphics = event.getGuiGraphics();
-                    graphics.blit(FROZEN_BLUR, 0, 0, 0, 0, graphics.guiWidth(), graphics.guiHeight(), graphics.guiWidth(), graphics.guiHeight());
+                    GuiGraphicsExtractor graphics = event.getGuiGraphics();
+                    // PORTING NOTE (1.21.1 -> 26.1.2): GuiGraphics -> GuiGraphicsExtractor, and blit(...) now always
+                    // requires an explicit RenderPipeline - mirrors vanilla's own full-screen texture overlay helper,
+                    // Gui#extractTextureOverlay(GuiGraphicsExtractor, Identifier, float) in the real 26.1.2 source
+                    // (used for the vanilla powder-snow screen outline - the exact same texture this reuses).
+                    graphics.blit(RenderPipelines.GUI_TEXTURED, FROZEN_BLUR, 0, 0, 0.0F, 0.0F, graphics.guiWidth(), graphics.guiHeight(), graphics.guiWidth(), graphics.guiHeight(), -1);
                 }
             }
         }
@@ -237,7 +255,7 @@ public class ClientEventHandler {
     @SubscribeEvent
     public static void onSetupCamera(ViewportEvent.ComputeCameraAngles event) {
         Player player = Minecraft.getInstance().player;
-        float delta = Minecraft.getInstance().getTimer().getGameTimeDeltaPartialTick(false);
+        float delta = Minecraft.getInstance().getDeltaTracker().getGameTimeDeltaPartialTick(false);
         float ticksExistedDelta = player.tickCount + delta;
 
         if (ConfigHandler.CLIENT.doCameraShakes.get() && !Minecraft.getInstance().isPaused()) {
@@ -257,7 +275,7 @@ public class ClientEventHandler {
     @SubscribeEvent(priority = EventPriority.HIGHEST)
     public static void onRenderBossBar(CustomizeGuiOverlayEvent.BossEventProgress event){
         if (!ConfigHandler.CLIENT.customBossBars.get()) return;
-        ResourceLocation bossRegistryName = ClientProxy.bossBarRegistryNames.getOrDefault(event.getBossEvent().getId(), null);
+        Identifier bossRegistryName = ClientProxy.bossBarRegistryNames.getOrDefault(event.getBossEvent().getId(), null);
         if (bossRegistryName == null) return;
         CustomBossBar customBossBar = CustomBossBar.customBossBars.getOrDefault(bossRegistryName, null);
         if (customBossBar == null) return;
@@ -266,40 +284,61 @@ public class ClientEventHandler {
         customBossBar.renderBossBar(event);
     }
 
-    private static ResourceLocation SCULPTOR_BLOCK_GLOW = ResourceLocation.fromNamespaceAndPath(MMCommon.MODID, "textures/entity/sculptor_highlight.png");
+    private static Identifier SCULPTOR_BLOCK_GLOW = Identifier.fromNamespaceAndPath(MMCommon.MODID, "textures/entity/sculptor_highlight.png");
 
+    /* FIXME 1.21 -> 26.1.2 port: UNRESOLVED, flagged for follow-up - this feature's rendering technique is gone.
+        This used to render a glowing decal overlay (via SheetedDecalTextureGenerator wrapping a custom highlight
+        VertexConsumer, MMRenderType.highlight(...)) UV-projected directly onto the real block model geometry of
+        each sculptor-marked block, by manually re-tesselating that block's BakedModel through
+        BlockRenderDispatcher#getModelRenderer()#tesselateBlock(...).
+
+        None of BlockRenderDispatcher, BakedModel, or that tesselateBlock(...) overload exist anymore (confirmed by
+        reading the real decompiled 26.1.2 source - net/minecraft/client/renderer/block/ has no BlockRenderDispatcher
+        or BakedModel at all now). Block model rendering was rewritten around a much lower-level, GPU-buffer-facing
+        pipeline: net.minecraft.client.renderer.block.BlockModelResolver resolves a BlockState to a
+        BlockModelRenderState (a render-state snapshot, matching the same architecture pattern as GuiGraphics ->
+        GuiGraphicsExtractor and AnimationState -> AnimationTest elsewhere in this port), and
+        ModelBlockRenderer#tesselateBlock(...) now writes into a BlockQuadOutput
+        (`void put(float x, float y, float z, BakedQuad quad, QuadInstance instance)`) instead of a VertexConsumer -
+        there is no drop-in adapter from that back to a VertexConsumer-based decal generator like
+        SheetedDecalTextureGenerator used here. Reproducing this decal effect correctly would require understanding
+        QuadInstance/BlockQuadOutput internals well enough to bridge them to immediate-mode vertex emission, which
+        was not attempted here to avoid guessing at unverified internals (against this porting pass's rules).
+
+        Also note: net.neoforged.neoforge.client.model.data (ModelData / ModelDataManager, used here to fetch
+        per-block-entity model data for the tesselation call) no longer exists in NeoForge 26.1.2.95 at all - grep
+        confirmed it's gone from the neoforge jar entirely, so `level.getModelDataManager()` has no replacement to
+        port to either.
+
+        The PoseStack push/pop/translate bookkeeping and the SculptorBlockMarking iteration below are left intact
+        (those still compile and still work) - only the final "draw the glow onto the block" step is stubbed out.
+        ACTION NEEDED: redesign this effect for the new pipeline (e.g. investigate whether NeoForge's
+        BlockQuadOutput-based renderer exposes a simpler decal-friendly overload, or switch to a different technique
+        entirely such as a translucent box/outline render instead of projecting onto real block geometry).
+    */
+    // PORTING NOTE (1.21.1 -> 26.1.2): RenderLevelStageEvent lost its Stage enum + getStage()/getCamera() in favor
+    // of one concrete subclass per stage (confirmed via javap against the real 26.1.2.95 neoforge jar - no
+    // "AFTER_BLOCK_ENTITIES" stage survives as such). Block entities are now submitted just before the
+    // AfterOpaqueFeatures stage fires (see LevelRenderer#renderLevel: submitBlockEntities(...) then
+    // featureRenderDispatcher.renderSolidFeatures() then the AfterOpaqueFeatures post), which is the closest
+    // equivalent timing to the old AFTER_BLOCK_ENTITIES stage. Camera position now comes from
+    // event.getLevelRenderState().cameraRenderState.pos (no more getCamera()).
     @SubscribeEvent(priority = EventPriority.HIGHEST)
-    public static void onRenderLevelStage(RenderLevelStageEvent event) {
-        if (event.getStage() == RenderLevelStageEvent.Stage.AFTER_BLOCK_ENTITIES) {
-            ClientLevel level = Minecraft.getInstance().level;
-            if (Minecraft.getInstance().player != null && level != null) {
-                Vec3 cameraPos = event.getCamera().getPosition();
-                double d0 = cameraPos.x();
-                double d1 = cameraPos.y();
-                double d2 = cameraPos.z();
-                for (Long2ObjectMap.Entry<SculptorBlockMarking> entry : ClientProxy.sculptorMarkedBlocks.long2ObjectEntrySet()) {
-                    BlockPos blockpos2 = BlockPos.of(entry.getLongKey());
-                    event.getPoseStack().pushPose();
-                    event.getPoseStack().translate((double) blockpos2.getX() - d0, (double) blockpos2.getY() - d1, (double) blockpos2.getZ() - d2);
-                    PoseStack.Pose posestack$pose1 = event.getPoseStack().last();
-                    float tick = event.getRenderTick();
-                    float blockOffset = (blockpos2.getX() + blockpos2.getY() + blockpos2.getZ()) * 0.25f;
-                    VertexConsumer vertexconsumer1 = new SheetedDecalTextureGenerator(Minecraft.getInstance().renderBuffers().bufferSource().getBuffer(MMRenderType.highlight(SCULPTOR_BLOCK_GLOW, tick * 0.02f + blockOffset, tick * 0.01f + blockOffset)), posestack$pose1, 0.25F);
-                    ModelData modelData = level.getModelDataManager().getAt(blockpos2);
-                    renderBreakingTexture(level.getBlockState(blockpos2), blockpos2, level, event.getPoseStack(), level.random, vertexconsumer1, modelData);
-
-                    event.getPoseStack().popPose();
-                }
+    public static void onRenderLevelStage(RenderLevelStageEvent.AfterOpaqueFeatures event) {
+        ClientLevel level = Minecraft.getInstance().level;
+        if (Minecraft.getInstance().player != null && level != null) {
+            Vec3 cameraPos = event.getLevelRenderState().cameraRenderState.pos;
+            double d0 = cameraPos.x();
+            double d1 = cameraPos.y();
+            double d2 = cameraPos.z();
+            for (Long2ObjectMap.Entry<SculptorBlockMarking> entry : ClientProxy.sculptorMarkedBlocks.long2ObjectEntrySet()) {
+                BlockPos blockpos2 = BlockPos.of(entry.getLongKey());
+                event.getPoseStack().pushPose();
+                event.getPoseStack().translate((double) blockpos2.getX() - d0, (double) blockpos2.getY() - d1, (double) blockpos2.getZ() - d2);
+                // See FIXME above the method - the glow decal render step used to happen here and is
+                // temporarily removed pending a redesign for the new block-model-rendering pipeline.
+                event.getPoseStack().popPose();
             }
-        }
-    }
-
-    private static void renderBreakingTexture(BlockState state, BlockPos pos, BlockAndTintGetter blockAndTintGetter, PoseStack poseStack, RandomSource random, VertexConsumer vertexConsumer, ModelData modelData) {
-        if (state.getRenderShape() == RenderShape.MODEL) {
-            BlockRenderDispatcher blockRenderDispatcher = Minecraft.getInstance().getBlockRenderer();
-            BakedModel bakedmodel = blockRenderDispatcher.getBlockModel(state);
-            long i = state.getSeed(pos);
-            blockRenderDispatcher.getModelRenderer().tesselateBlock(blockAndTintGetter, bakedmodel, state, pos, poseStack, vertexConsumer, true, random, i, OverlayTexture.NO_OVERLAY, modelData, null);
         }
     }
 

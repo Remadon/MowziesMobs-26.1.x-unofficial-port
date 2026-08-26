@@ -70,7 +70,7 @@ public class ClientUtils {
      * @param type the type of texture to apply
      * @param texture the texture to apply
      */
-    /*public static void setPlayerTexture(AbstractClientPlayer player, MinecraftProfileTexture.Type type, ResourceLocation texture) {
+    /*public static void setPlayerTexture(AbstractClientPlayer player, MinecraftProfileTexture.Type type, Identifier texture) {
         if (player.hasPlayerInfo() && texture != null) {
             player.getPlayerInfo().playerTextures.put(type, texture);
         }

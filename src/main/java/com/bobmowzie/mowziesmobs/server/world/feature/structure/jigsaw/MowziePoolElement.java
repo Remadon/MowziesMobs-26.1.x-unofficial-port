@@ -8,7 +8,7 @@ import net.minecraft.core.BlockPos;
 import net.minecraft.core.Direction;
 import net.minecraft.core.Holder;
 import net.minecraft.core.Vec3i;
-import net.minecraft.resources.ResourceLocation;
+import net.minecraft.resources.Identifier;
 import net.minecraft.util.RandomSource;
 import net.minecraft.world.level.block.JigsawBlock;
 import net.minecraft.world.level.block.Mirror;
@@ -70,7 +70,7 @@ public class MowziePoolElement extends SinglePoolElement {
      */
     public final int priority;
 
-    protected MowziePoolElement(Either<ResourceLocation, StructureTemplate> p_210415_, Holder<StructureProcessorList> p_210416_, StructureTemplatePool.Projection p_210417_,
+    protected MowziePoolElement(Either<Identifier, StructureTemplate> p_210415_, Holder<StructureProcessorList> p_210416_, StructureTemplatePool.Projection p_210417_,
                                 BoundsParams bounds, ConditionsParams conditions, TagsParams tags,
                                 boolean twoWay, int genOrder, int priority) {
         super(p_210415_, p_210416_, p_210417_, Optional.of(LiquidSettings.IGNORE_WATERLOGGING));
@@ -82,16 +82,20 @@ public class MowziePoolElement extends SinglePoolElement {
         this.priority = priority;
     }
 
-    public static boolean canAttachTwoWays(StructureTemplate.StructureBlockInfo p_54246_, StructureTemplate.StructureBlockInfo p_54247_) {
-        Direction direction = JigsawBlock.getFrontFacing(p_54246_.state());
-        Direction direction1 = JigsawBlock.getFrontFacing(p_54247_.state());
-        Direction direction2 = JigsawBlock.getTopFacing(p_54246_.state());
-        Direction direction3 = JigsawBlock.getTopFacing(p_54247_.state());
-        JigsawBlockEntity.JointType jigsawblockentity$jointtype = JigsawBlockEntity.JointType.byName(p_54246_.nbt().getString("joint")).orElseGet(() -> {
-            return direction.getAxis().isHorizontal() ? JigsawBlockEntity.JointType.ALIGNED : JigsawBlockEntity.JointType.ROLLABLE;
-        });
+    // PORTING NOTE (1.21.1 -> 26.1.2): StructurePoolElement#getShuffledJigsawBlocks now returns
+    // List<StructureTemplate.JigsawBlockInfo> instead of List<StructureTemplate.StructureBlockInfo> (confirmed
+    // against real 26.1.2 StructurePoolElement/StructureTemplate/JigsawBlock source - see also
+    // MowzieJigsawManager.java for the fuller writeup). JigsawBlockInfo wraps the raw StructureBlockInfo as
+    // `.info()` and pre-parses `.jointType()`/`.name()`/`.pool()`/`.target()` from NBT once instead of re-reading
+    // NBT strings each time - used directly here instead of re-deriving them.
+    public static boolean canAttachTwoWays(StructureTemplate.JigsawBlockInfo p_54246_, StructureTemplate.JigsawBlockInfo p_54247_) {
+        Direction direction = JigsawBlock.getFrontFacing(p_54246_.info().state());
+        Direction direction1 = JigsawBlock.getFrontFacing(p_54247_.info().state());
+        Direction direction2 = JigsawBlock.getTopFacing(p_54246_.info().state());
+        Direction direction3 = JigsawBlock.getTopFacing(p_54247_.info().state());
+        JigsawBlockEntity.JointType jigsawblockentity$jointtype = p_54246_.jointType();
         boolean flag = jigsawblockentity$jointtype == JigsawBlockEntity.JointType.ROLLABLE;
-        return direction == direction1 && (flag || direction2 == direction3) && p_54246_.nbt().getString("target").equals(p_54247_.nbt().getString("name"));
+        return direction == direction1 && (flag || direction2 == direction3) && p_54246_.target().equals(p_54247_.name());
     }
 
     public boolean ignoresBounds() {

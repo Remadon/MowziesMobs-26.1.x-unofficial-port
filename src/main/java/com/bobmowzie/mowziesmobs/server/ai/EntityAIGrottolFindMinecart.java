@@ -4,7 +4,7 @@ import com.bobmowzie.mowziesmobs.server.entity.grottol.EntityGrottol;
 import com.google.common.base.Predicate;
 import net.minecraft.world.entity.Entity;
 import net.minecraft.world.entity.ai.goal.Goal;
-import net.minecraft.world.entity.vehicle.Minecart;
+import net.minecraft.world.entity.vehicle.minecart.Minecart;
 
 import java.util.Comparator;
 import java.util.EnumSet;
@@ -64,7 +64,11 @@ public final class EntityAIGrottolFindMinecart extends Goal {
                 grottol.getNavigation().moveTo(minecart, 0.5D);
             }
         } else {
-            grottol.startRiding(minecart, true);
+            // PORTING NOTE (1.21.1 -> 26.1.2): Entity#startRiding(Entity, boolean force) 2-arg overload is gone -
+            // only startRiding(Entity) (force=false) and startRiding(Entity, boolean force, boolean
+            // sendEventAndTriggers) remain (confirmed against real 26.1.2 Entity source). Using the 3-arg form with
+            // sendEventAndTriggers=true (vanilla's own default for the force=true case) to preserve force=true.
+            grottol.startRiding(minecart, true, true);
             if (minecart.getHurtTime() == 0) {
                 minecart.setHurtDir(-minecart.getHurtDir());
                 minecart.setHurtTime(10);

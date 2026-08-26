@@ -1,7 +1,6 @@
 package com.bobmowzie.mowziesmobs;
 
 import com.bobmowzie.mowziesmobs.client.ClientProxy;
-import com.bobmowzie.mowziesmobs.client.model.tools.MowzieModelFactory;
 import com.bobmowzie.mowziesmobs.client.particle.ParticleHandler;
 import com.bobmowzie.mowziesmobs.server.ServerEventHandler;
 import com.bobmowzie.mowziesmobs.server.ServerProxy;
@@ -15,7 +14,6 @@ import com.bobmowzie.mowziesmobs.server.creativetab.CreativeTabHandler;
 import com.bobmowzie.mowziesmobs.server.entity.EntityHandler;
 import com.bobmowzie.mowziesmobs.server.inventory.ContainerHandler;
 import com.bobmowzie.mowziesmobs.server.item.ItemHandler;
-import com.bobmowzie.mowziesmobs.server.item.MaterialHandler;
 import com.bobmowzie.mowziesmobs.server.loot.LootTableHandler;
 import com.bobmowzie.mowziesmobs.server.potion.EffectHandler;
 import com.bobmowzie.mowziesmobs.server.potion.PotionTypeHandler;
@@ -26,7 +24,7 @@ import com.bobmowzie.mowziesmobs.server.world.feature.structure.jigsaw.JigsawHan
 import com.bobmowzie.mowziesmobs.server.world.feature.structure.processor.ProcessorHandler;
 import com.bobmowzie.mowziesmobs.server.world.spawn.SpawnHandler;
 import net.minecraft.core.registries.BuiltInRegistries;
-import net.minecraft.resources.ResourceLocation;
+import net.minecraft.resources.Identifier;
 import net.minecraft.world.entity.EntityType;
 import net.minecraft.world.entity.LivingEntity;
 import net.minecraft.world.entity.ai.attributes.DefaultAttributes;
@@ -36,11 +34,10 @@ import net.neoforged.fml.common.Mod;
 import net.neoforged.fml.config.ModConfig;
 import net.neoforged.fml.event.config.ModConfigEvent;
 import net.neoforged.fml.event.lifecycle.FMLLoadCompleteEvent;
-import net.neoforged.fml.loading.FMLLoader;
+import net.neoforged.fml.loading.FMLEnvironment;
 import net.neoforged.neoforge.common.NeoForge;
 import org.apache.logging.log4j.LogManager;
 import org.apache.logging.log4j.Logger;
-import software.bernie.geckolib.util.GeckoLibUtil;
 
 import java.util.stream.Stream;
 
@@ -51,13 +48,25 @@ public final class MMCommon {
     public static ServerProxy PROXY;
 
     public MMCommon(IEventBus modBus, ModContainer container) {
-        GeckoLibUtil.addCustomBakedModelFactory(MODID, new MowzieModelFactory());
+        // PORTING NOTE (1.21.1 -> 26.1.2): GeckoLibUtil.addCustomBakedModelFactory(String, BakedModelFactory) no
+        // longer exists in GeckoLib 5.5.2 - the per-bone custom-model-factory seam it used is gone entirely (see
+        // client/model/tools/MowzieModelFactory.java's class javadoc for the full explanation from the agent that
+        // owns that file). MowzieModelFactory is now a no-op GeckoLibLoader identical to the default
+        // GeckoLibGsonLoader, so registering it via the new GeckoLibUtil.addResourceLoader(predicate, loader) would
+        // be redundant with default behavior - per that file's recommendation, this registration call is simply
+        // removed rather than ported.
 
-        PROXY = FMLLoader.getDist().isClient() ? new ClientProxy() : new ServerProxy();
+        // PORTING NOTE (1.21.1 -> 26.1.2): FMLLoader#getDist() is now a non-static instance method (confirmed via
+        // javap against the real fancymodloader 11.0.15 jar - FMLLoader's constructor is also private, so it can't
+        // be instantiated directly). FMLEnvironment#getDist() is the still-static replacement (own small utility
+        // class in the same package, confirmed present) matching the old call-site shape exactly.
+        PROXY = FMLEnvironment.getDist().isClient() ? new ClientProxy() : new ServerProxy();
         BlockHandler.REG.register(modBus);
         EntityHandler.REG.register(modBus);
         EntityHandler.SERIALIZER_REG.register(modBus);
-        MaterialHandler.MM_ARMOR_MATERIALS.register(modBus);
+        // PORTING NOTE (1.21.1 -> 26.1.2): MaterialHandler.MM_ARMOR_MATERIALS no longer exists - ArmorMaterial is
+        // no longer registry-backed, so MaterialHandler was rewritten to plain static final ArmorMaterial fields
+        // (confirmed by the server/item agent, who owns that file) with nothing left to register here.
         ItemHandler.REG.register(modBus);
         MMSounds.REG.register(modBus);
         BlockEntityHandler.REG.register(modBus);
@@ -146,8 +155,8 @@ public final class MMCommon {
         BlockHandler.init();
     }
 
-    public static ResourceLocation resource(String path) {
-        return ResourceLocation.fromNamespaceAndPath(MODID, path);
+    public static Identifier resource(String path) {
+        return Identifier.fromNamespaceAndPath(MODID, path);
     }
 
     public static Stream<EntityType<? extends LivingEntity>> getLivingEntityTypes() {

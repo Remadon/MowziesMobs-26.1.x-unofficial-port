@@ -30,6 +30,8 @@ import net.minecraft.world.entity.player.Player;
 import net.minecraft.world.level.ClipContext;
 import net.minecraft.world.level.Level;
 import net.minecraft.world.level.material.PushReaction;
+import net.minecraft.world.level.storage.ValueInput;
+import net.minecraft.world.level.storage.ValueOutput;
 import net.minecraft.world.phys.AABB;
 import net.minecraft.world.phys.BlockHitResult;
 import net.minecraft.world.phys.HitResult;
@@ -73,8 +75,9 @@ public class EntitySolarBeam extends Entity {
 
     public EntitySolarBeam(EntityType<? extends EntitySolarBeam> type, Level world) {
         super(type, world);
-        noCulling = true;
-        if (world.isClientSide) {
+        // FIXME 26.1.2 port: Entity#noCulling was removed entirely; render culling is now controlled
+        // client-side via the entity renderer, not a settable field on the entity itself.
+        if (world.isClientSide()) {
             attractorPos = new Vec3[] {new Vec3(0, 0, 0)};
         }
     }
@@ -88,7 +91,7 @@ public class EntitySolarBeam extends Entity {
         this.setPos(x, y, z);
         this.calculateEndPos();
         MMCommon.PROXY.playSolarBeamSound(this);
-        if (!world.isClientSide) {
+        if (!world.isClientSide()) {
             this.setCasterID(caster.getId());
         }
     }
@@ -109,11 +112,11 @@ public class EntitySolarBeam extends Entity {
         xo = getX();
         yo = getY();
         zo = getZ();
-        if (tickCount == 1 && level().isClientSide) {
+        if (tickCount == 1 && level().isClientSide()) {
             caster = (LivingEntity) level().getEntity(getCasterID());
         }
 
-        if (!level().isClientSide) {
+        if (!level().isClientSide()) {
             if (getHasPlayer()) {
                 this.updateWithPlayer();
             }
@@ -137,7 +140,7 @@ public class EntitySolarBeam extends Entity {
 
         if (caster != null && !caster.isAlive()) discard() ;
 
-        if (level().isClientSide && tickCount <= 10 && caster != null) {
+        if (level().isClientSide() && tickCount <= 10 && caster != null) {
             int particleCount = 8;
             while (--particleCount != 0) {
                 double radius = 2f * caster.getBbWidth();
@@ -194,7 +197,7 @@ public class EntitySolarBeam extends Entity {
             if (blockSide != null) {
                 spawnExplosionParticles(2);
             }
-            if (!level().isClientSide) {
+            if (!level().isClientSide()) {
                 for (Entity target : hit) {
                     if (target instanceof ItemEntity) continue;
                     if (caster instanceof EntityUmvuthi && target instanceof LeaderSunstrikeImmune) {
@@ -276,6 +279,12 @@ public class EntitySolarBeam extends Entity {
         builder.define(CASTER, -1);
     }
 
+    @Override
+    public boolean hurtServer(net.minecraft.server.level.ServerLevel level, net.minecraft.world.damagesource.DamageSource source, float amount) {
+        // NOTE 26.1.2 port: see EntityMagicEffect#hurtServer for context on this required override.
+        return false;
+    }
+
     public float getYaw() {
         return getEntityData().get(YAW);
     }
@@ -317,10 +326,10 @@ public class EntitySolarBeam extends Entity {
     }
 
     @Override
-    protected void readAdditionalSaveData(CompoundTag nbt) {}
+    protected void readAdditionalSaveData(ValueInput input) {}
 
     @Override
-    protected void addAdditionalSaveData(CompoundTag nbt) {}
+    protected void addAdditionalSaveData(ValueOutput output) {}
 
     private void calculateEndPos() {
         double radius = caster instanceof EntityUmvuthi ? RADIUS_UMVUTHI : RADIUS_PLAYER;

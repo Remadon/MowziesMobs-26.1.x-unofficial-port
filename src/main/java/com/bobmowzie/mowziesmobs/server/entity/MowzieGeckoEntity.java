@@ -9,22 +9,23 @@ import com.bobmowzie.mowziesmobs.server.ability.abilities.player.SimpleAnimation
 import com.bobmowzie.mowziesmobs.server.capability.AbilityData;
 import com.bobmowzie.mowziesmobs.server.capability.DataHandler;
 import net.minecraft.network.RegistryFriendlyByteBuf;
+import net.minecraft.server.level.ServerLevel;
 import net.minecraft.world.damagesource.DamageSource;
 import net.minecraft.world.entity.EntityType;
 import net.minecraft.world.level.Level;
 import net.minecraft.world.phys.Vec3;
 import org.jetbrains.annotations.NotNull;
-import software.bernie.geckolib.animatable.GeoEntity;
-import software.bernie.geckolib.animatable.instance.AnimatableInstanceCache;
-import software.bernie.geckolib.animation.AnimatableManager;
-import software.bernie.geckolib.animation.AnimationState;
-import software.bernie.geckolib.animation.PlayState;
-import software.bernie.geckolib.animation.RawAnimation;
-import software.bernie.geckolib.util.GeckoLibUtil;
+import com.geckolib.animatable.GeoEntity;
+import com.geckolib.animatable.instance.AnimatableInstanceCache;
+import com.geckolib.animatable.manager.AnimatableManager;
+import com.geckolib.animation.state.AnimationTest;
+import com.geckolib.animation.object.PlayState;
+import com.geckolib.animation.RawAnimation;
+import com.geckolib.util.GeckoLibUtil;
 
 public abstract class MowzieGeckoEntity extends MowzieEntity implements GeoEntity {
     private final AnimatableInstanceCache cache = GeckoLibUtil.createInstanceCache(this);
-    protected MowzieAnimationController<MowzieGeckoEntity> controller = new MowzieAnimationController<>(this, "controller", 5, this::predicate, 0);
+    protected MowzieAnimationController<MowzieGeckoEntity> controller = new MowzieAnimationController<>("controller", 5, this::predicate);
 
     public GeckoDynamicChain[] dynamicChains;
 
@@ -64,8 +65,8 @@ public abstract class MowzieGeckoEntity extends MowzieEntity implements GeoEntit
     }
 
     @Override
-    public boolean hurt(DamageSource source, float damage) {
-        boolean attack = super.hurt(source, damage);
+    public boolean hurtServer(ServerLevel level, DamageSource source, float damage) {
+        boolean attack = super.hurtServer(level, source, damage);
         if (attack) {
             if (getHealth() > 0.0F && (getActiveAbility() == null || (getActiveAbility().damageInterrupts() && damage >= getActiveAbility().damageInterruptThreshold())) && shouldPlayHurtAnimation(source, damage)) {
                 sendAbilityMessage(getHurtAbility());
@@ -100,7 +101,7 @@ public abstract class MowzieGeckoEntity extends MowzieEntity implements GeoEntit
         return false;
     }
 
-    protected <E extends GeoEntity> PlayState predicate(AnimationState<E> state) {
+    protected <E extends GeoEntity> PlayState predicate(AnimationTest<E> state) {
         AbilityData abilityData = getAbilityData();
 
         if (abilityData == null) {
@@ -112,7 +113,7 @@ public abstract class MowzieGeckoEntity extends MowzieEntity implements GeoEntit
         }
 
         if (abilityData.getActiveAbility() != null) {
-            getController().transitionLength(0);
+            getController().setTransitionTicks(0);
             return abilityData.animationPredicate(state, null);
         }
         else {
@@ -123,8 +124,8 @@ public abstract class MowzieGeckoEntity extends MowzieEntity implements GeoEntit
 
     private static RawAnimation IDLE_ANIM = RawAnimation.begin().thenLoop("idle");
 
-    protected <E extends GeoEntity> void loopingAnimations(AnimationState<E> event) {
-        event.getController().setAnimation(IDLE_ANIM);
+    protected <E extends GeoEntity> void loopingAnimations(AnimationTest<E> event) {
+        event.controller().setAnimation(IDLE_ANIM);
     }
 
     @Override

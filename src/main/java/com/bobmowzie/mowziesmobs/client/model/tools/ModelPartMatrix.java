@@ -52,14 +52,27 @@ public class ModelPartMatrix extends ModelPart {
         if (resetUseMatrixMode) useMatrixMode = false;
     }
 
-    @Override
+    // PORTING NOTE: vanilla ModelPart#copyFrom(ModelPart) was removed entirely in the 26.1.2 rewrite (cubes/children
+    // are now constructor-only final fields, and there's no more bulk-pose-copy helper on the base class). No longer
+    // @Override - this is now a plain method that copies the pose fields ModelPart still exposes as public mutable
+    // fields (x/y/z/xRot/yRot/zRot/xScale/yScale/zScale/visible/skipDraw), preserving the old behavior manually.
     public void copyFrom(ModelPart modelRendererIn) {
         if (modelRendererIn instanceof ModelPartMatrix) {
             ModelPartMatrix other = (ModelPartMatrix) modelRendererIn;
             this.setWorldNormal(other.getWorldNormal());
             this.setWorldXform(other.getWorldXform());
         }
-        super.copyFrom(modelRendererIn);
+        this.x = modelRendererIn.x;
+        this.y = modelRendererIn.y;
+        this.z = modelRendererIn.z;
+        this.xRot = modelRendererIn.xRot;
+        this.yRot = modelRendererIn.yRot;
+        this.zRot = modelRendererIn.zRot;
+        this.xScale = modelRendererIn.xScale;
+        this.yScale = modelRendererIn.yScale;
+        this.zScale = modelRendererIn.zScale;
+        this.visible = modelRendererIn.visible;
+        this.skipDraw = modelRendererIn.skipDraw;
     }
 
     public Matrix3f getWorldNormal() {

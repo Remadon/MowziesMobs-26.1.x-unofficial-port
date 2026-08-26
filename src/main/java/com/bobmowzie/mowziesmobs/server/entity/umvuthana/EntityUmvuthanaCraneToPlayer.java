@@ -5,7 +5,7 @@ import com.bobmowzie.mowziesmobs.server.potion.EffectHandler;
 import net.minecraft.world.DifficultyInstance;
 import net.minecraft.world.entity.EntityType;
 import net.minecraft.world.entity.LivingEntity;
-import net.minecraft.world.entity.MobSpawnType;
+import net.minecraft.world.entity.EntitySpawnReason;
 import net.minecraft.world.entity.SpawnGroupData;
 import net.minecraft.world.entity.ai.attributes.Attributes;
 import net.minecraft.world.entity.ai.targeting.TargetingConditions;
@@ -34,7 +34,7 @@ public class EntityUmvuthanaCraneToPlayer extends EntityUmvuthanaFollowerToPlaye
     @Override
     protected void registerTargetGoals() {
         super.registerTargetGoals();
-        this.targetSelector.addGoal(2, new NearestAttackableTargetPredicateGoal<Player>(this, Player.class, 0, true, true, TargetingConditions.forNonCombat().range(getAttributeValue(Attributes.FOLLOW_RANGE)).selector(target -> {
+        this.targetSelector.addGoal(2, new NearestAttackableTargetPredicateGoal<Player>(this, Player.class, 0, true, true, TargetingConditions.forNonCombat().range(getAttributeValue(Attributes.FOLLOW_RANGE)).selector((target, targetLevel) -> {
             if (!active) return false;
             if (target != getLeader()) return false;
             return healAICheckTarget(target);
@@ -72,7 +72,7 @@ public class EntityUmvuthanaCraneToPlayer extends EntityUmvuthanaFollowerToPlaye
     }
 
     @Override
-    public SpawnGroupData finalizeSpawn(ServerLevelAccessor world, DifficultyInstance difficulty, MobSpawnType reason, SpawnGroupData livingData) {
+    public SpawnGroupData finalizeSpawn(ServerLevelAccessor world, DifficultyInstance difficulty, EntitySpawnReason reason, SpawnGroupData livingData) {
         setMask(MaskType.FAITH);
         setWeapon(3);
         return super.finalizeSpawn(world, difficulty, reason, livingData);

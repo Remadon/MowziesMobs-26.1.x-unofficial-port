@@ -44,7 +44,7 @@ public class BaseDecoProcessor extends StructureProcessor {
     @Override
     public StructureTemplate.StructureBlockInfo process(LevelReader levelReader, BlockPos jigsawPiecePos, BlockPos jigsawPieceBottomCenterPos, StructureTemplate.StructureBlockInfo blockInfoLocal, StructureTemplate.StructureBlockInfo blockInfoGlobal, StructurePlaceSettings structurePlacementData, StructureTemplate template) {
         if (blockInfoGlobal.state().is(Blocks.PURPUR_STAIRS)) {
-            if (levelReader instanceof WorldGenRegion worldGenRegion && !worldGenRegion.getCenter().equals(new ChunkPos(blockInfoGlobal.pos()))) {
+            if (levelReader instanceof WorldGenRegion worldGenRegion && !worldGenRegion.getCenter().equals(ChunkPos.containing(blockInfoGlobal.pos()))) {
                 return blockInfoGlobal;
             }
 
@@ -78,7 +78,9 @@ public class BaseDecoProcessor extends StructureProcessor {
                             state = state.setValue(HorizontalDirectionalBlock.FACING, facing);
                         }
                     }
-                    levelReader.getChunk(pos).setBlockState(pos, state, false);
+                    // PORTING NOTE: ChunkAccess#setBlockState's 3rd param is now an int update-flags bitmask, not a
+                    // boolean "isMoving" flag (see BaseProcessor.java for the fuller writeup).
+                    levelReader.getChunk(pos).setBlockState(pos, state, net.minecraft.world.level.block.Block.UPDATE_ALL);
                 }
             }
         }

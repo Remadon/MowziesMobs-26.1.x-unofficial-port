@@ -24,9 +24,8 @@ import com.bobmowzie.mowziesmobs.server.message.mouse.MessageRightMouseUp;
 import com.bobmowzie.mowziesmobs.server.potion.EffectHandler;
 import com.bobmowzie.mowziesmobs.server.power.Power;
 import net.minecraft.client.Minecraft;
-import net.minecraft.core.HolderLookup;
 import net.minecraft.core.particles.ParticleTypes;
-import net.minecraft.nbt.CompoundTag;
+import net.minecraft.core.registries.BuiltInRegistries;
 import net.minecraft.server.level.ServerPlayer;
 import net.minecraft.util.Mth;
 import net.minecraft.world.InteractionHand;
@@ -37,18 +36,19 @@ import net.minecraft.world.entity.player.Player;
 import net.minecraft.world.item.Item;
 import net.minecraft.world.item.ItemCooldowns;
 import net.minecraft.world.item.ItemStack;
+import net.minecraft.world.level.storage.ValueInput;
+import net.minecraft.world.level.storage.ValueOutput;
 import net.minecraft.world.phys.Vec3;
-import net.neoforged.neoforge.common.util.INBTSerializable;
+import net.neoforged.neoforge.common.util.ValueIOSerializable;
 import net.neoforged.neoforge.event.entity.EntityJoinLevelEvent;
 import net.neoforged.neoforge.event.tick.PlayerTickEvent;
-import net.neoforged.neoforge.network.PacketDistributor;
+import net.neoforged.neoforge.client.network.ClientPacketDistributor;
 import net.neoforged.neoforge.registries.DeferredHolder;
-import org.jetbrains.annotations.NotNull;
 
 import java.util.ArrayList;
 import java.util.List;
 
-public class PlayerData implements INBTSerializable<CompoundTag> {
+public class PlayerData implements ValueIOSerializable {
     public boolean verticalSwing = false;
     public int untilSunstrike = 0;
     public int untilAxeSwing = 0;
@@ -202,7 +202,7 @@ public class PlayerData implements INBTSerializable<CompoundTag> {
     public void pressedAttackKey(Player player) {
         if (!mouseLeftDown) {
             mouseLeftDown = true;
-            PacketDistributor.sendToServer(new MessageLeftMouseDown());
+            ClientPacketDistributor.sendToServer(new MessageLeftMouseDown());
             for (Power power : powers) {
                 power.onLeftMouseDown(player);
             }
@@ -218,7 +218,7 @@ public class PlayerData implements INBTSerializable<CompoundTag> {
     public void pressedUseKey(Player player) {
         if (!mouseRightDown) {
             mouseRightDown = true;
-            PacketDistributor.sendToServer(new MessageRightMouseDown());
+            ClientPacketDistributor.sendToServer(new MessageRightMouseDown());
             for (Power power : powers) {
                 power.onLeftMouseDown(player);
             }
@@ -270,12 +270,15 @@ public class PlayerData implements INBTSerializable<CompoundTag> {
 
         Ability<?> iceBreathAbility = AbilityHandler.INSTANCE.getAbility(player, AbilityHandler.ICE_BREATH_ABILITY);
         if (iceBreathAbility != null && !iceBreathAbility.isUsing()) {
-            for (ItemStack stack : player.getInventory().items) {
+            // PORTING NOTE (1.21.1 -> 26.1.2): Inventory#items is now private and Inventory#offhand no longer
+            // exists at all - equipment (including offhand) moved onto a separate EntityEquipment object
+            // (confirmed against real 26.1.2 Inventory source). getNonEquipmentItems() is the replacement for the
+            // old public `items` field (the 36-slot hotbar+main inventory only), and offhand is now read directly
+            // off the entity via getItemBySlot(EquipmentSlot.OFFHAND).
+            for (ItemStack stack : player.getInventory().getNonEquipmentItems()) {
                 restoreIceCrystalStack(player, stack);
             }
-            for (ItemStack stack : player.getInventory().offhand) {
-                restoreIceCrystalStack(player, stack);
-            }
+            restoreIceCrystalStack(player, player.getItemBySlot(net.minecraft.world.entity.EquipmentSlot.OFFHAND));
         }
 
         useIceCrystalStack(player);
@@ -283,7 +286,7 @@ public class PlayerData implements INBTSerializable<CompoundTag> {
         if (player.level().isClientSide()) {
             if (!Minecraft.getInstance().options.keyAttack.isDown() && mouseLeftDown) {
                 mouseLeftDown = false;
-                PacketDistributor.sendToServer(new MessageLeftMouseUp());
+                ClientPacketDistributor.sendToServer(new MessageLeftMouseUp());
                 for (int i = 0; i < powers.length; i++) {
                     powers[i].onLeftMouseUp(player);
                 }
@@ -298,7 +301,7 @@ public class PlayerData implements INBTSerializable<CompoundTag> {
             }
             if (!Minecraft.getInstance().options.keyUse.isDown() && mouseRightDown) {
                 mouseRightDown = false;
-                PacketDistributor.sendToServer(new MessageRightMouseUp());
+                ClientPacketDistributor.sendToServer(new MessageRightMouseUp());
                 for (int i = 0; i < powers.length; i++) {
                     powers[i].onRightMouseUp(player);
                 }
@@ -409,10 +412,10 @@ public class PlayerData implements INBTSerializable<CompoundTag> {
             if (iceBreathAbility != null && iceBreathAbility.isUsing()) {
                 InteractionHand handIn = player.getUsedItemHand();
                 if (stack.getDamageValue() + 5 < stack.getMaxDamage()) {
-                    stack.hurtAndBreak(5, player, LivingEntity.getSlotForHand(handIn));
+                    stack.hurtAndBreak(5, player, handIn.asEquipmentSlot());
                 } else {
                     if (ConfigHandler.COMMON.TOOLS_AND_ABILITIES.ICE_CRYSTAL.breakable.get()) {
-                        stack.hurtAndBreak(5, player, LivingEntity.getSlotForHand(handIn));
+                        stack.hurtAndBreak(5, player, handIn.asEquipmentSlot());
                     }
                     iceBreathAbility.end();
                 }
@@ -428,7 +431,9 @@ public class PlayerData implements INBTSerializable<CompoundTag> {
         for (int l = 0; l <= 4; ++l) {
             for (int i1 = 0; i1 <= 4; ++i1) {
                 if ((l < 1 || i1 < 1 || l > 3 || i1 > 3) && umvuthana.isTeleportFriendlyBlock(x, z, y, l, i1)) {
-                    umvuthana.moveTo((float) (x + l) + 0.5F, y, (float) (z + i1) + 0.5F, umvuthana.getYRot(), umvuthana.getXRot());
+                    // PORTING NOTE (1.21.1 -> 26.1.2): Entity#moveTo(x,y,z,yRot,xRot) was renamed to snapTo(...)
+                    // (same rename as Entity#absMoveTo, see onFreeze() in FrozenData.java for the same fix).
+                    umvuthana.snapTo((float) (x + l) + 0.5F, y, (float) (z + i1) + 0.5F, umvuthana.getYRot(), umvuthana.getXRot());
                     umvuthana.getNavigation().stop();
                     return;
                 }
@@ -469,44 +474,50 @@ public class PlayerData implements INBTSerializable<CompoundTag> {
         testingSculptor = sculptor;
     }
 
+    // PORTING NOTE (1.21.1 -> 26.1.2): ItemCooldowns#cooldowns and its CooldownInstance record are now both
+    // private (confirmed against real 26.1.2 ItemCooldowns source - CooldownInstance is a private record nested
+    // in ItemCooldowns with no accessor exposing the raw map or an instance's startTime/endTime), so the old
+    // direct-map read/write is no longer possible. Rebuilt on the remaining public API:
+    // getCooldownPercent(ItemStack, float) for reading, addCooldown(Identifier, int ticksRemaining) for writing.
+    // KNOWN BEHAVIOR NUANCE: addCooldown always starts a fresh cooldown window (startTime = current tick), so the
+    // client's cooldown *overlay bar* will render as if the cooldown just started (i.e. the swipe animation
+    // restarts) rather than resuming mid-animation from the saved fractional progress, even though the actual
+    // "ticks remaining until usable again" value is preserved exactly. There is no public API left to reconstruct
+    // an arbitrary historical startTime for the overlay animation.
     public void setPawCooldownsForNBT(Player player) {
-        ItemCooldowns.CooldownInstance cooldownInstance = player.getCooldowns().cooldowns.get(ItemHandler.ELOKOSA_PAW_FULL.get());
-        if (cooldownInstance != null) {
-            pawCooldownRemainingToSave = cooldownInstance.endTime - player.tickCount;
+        float percent = player.getCooldowns().getCooldownPercent(new ItemStack(ItemHandler.ELOKOSA_PAW_FULL.get()), 0.0F);
+        if (percent > 0.0F) {
+            int cooldown = ConfigHandler.COMMON.TOOLS_AND_ABILITIES.ELOKOSA_PAW.cooldown.getAsInt();
+            pawCooldownRemainingToSave = Math.round(percent * cooldown);
         }
     }
 
     public void loadPawCooldownsFromNBT(Player player) {
-        int cooldown = ConfigHandler.COMMON.TOOLS_AND_ABILITIES.ELOKOSA_PAW.cooldown.getAsInt();
         if (pawCooldownRemainingToLoad > 0) {
             for (DeferredHolder<Item, ItemElokosaPaw> item : ItemHandler.ELOKOSA_PAWS) {
-                int startTime = -(cooldown - pawCooldownRemainingToLoad);
-                int endTime = pawCooldownRemainingToLoad;
-                player.getCooldowns().cooldowns.put(item.get(), new ItemCooldowns.CooldownInstance(startTime, endTime));
+                player.getCooldowns().addCooldown(BuiltInRegistries.ITEM.getKey(item.get()), pawCooldownRemainingToLoad);
                 if (player instanceof ServerPlayer serverPlayer) {
-                    serverPlayer.connection.send(new MessageAddInProgressCooldown(item.get(), startTime, endTime));
+                    serverPlayer.connection.send(new MessageAddInProgressCooldown(item.get(), 0, pawCooldownRemainingToLoad));
                 }
             }
         }
     }
 
     @Override
-    public CompoundTag serializeNBT(@NotNull HolderLookup.Provider lookup) {
-        CompoundTag compound = new CompoundTag();
-        compound.putInt("untilSunstrike", untilSunstrike);
-        compound.putInt("untilAxeSwing", untilAxeSwing);
-        compound.putInt("prevTime", prevTime);
-        compound.putInt("time", time);
-        compound.putInt("pawCooldownRemaining", pawCooldownRemainingToSave);
-        return compound;
+    public void serialize(ValueOutput output) {
+        output.putInt("untilSunstrike", untilSunstrike);
+        output.putInt("untilAxeSwing", untilAxeSwing);
+        output.putInt("prevTime", prevTime);
+        output.putInt("time", time);
+        output.putInt("pawCooldownRemaining", pawCooldownRemainingToSave);
     }
 
     @Override
-    public void deserializeNBT(@NotNull HolderLookup.Provider lookup, CompoundTag compound) {
-        untilSunstrike = compound.getInt("untilSunstrike");
-        untilAxeSwing = compound.getInt("untilAxeSwing");
-        prevTime = compound.getInt("prevTime");
-        time = compound.getInt("time");
-        pawCooldownRemainingToLoad = compound.getInt("pawCooldownRemaining");
+    public void deserialize(ValueInput input) {
+        untilSunstrike = input.getIntOr("untilSunstrike", 0);
+        untilAxeSwing = input.getIntOr("untilAxeSwing", 0);
+        prevTime = input.getIntOr("prevTime", 0);
+        time = input.getIntOr("time", 0);
+        pawCooldownRemainingToLoad = input.getIntOr("pawCooldownRemaining", 0);
     }
 }

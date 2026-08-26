@@ -9,7 +9,6 @@ import net.minecraft.core.BlockPos;
 import net.minecraft.core.Direction;
 import net.minecraft.tags.BlockTags;
 import net.minecraft.util.Mth;
-import net.minecraft.util.random.WeightedEntry;
 import net.minecraft.util.valueproviders.UniformInt;
 import net.minecraft.world.entity.EntityDimensions;
 import net.minecraft.world.entity.Pose;
@@ -90,8 +89,8 @@ public abstract class ElokosaLeapGoal extends Goal {
                         downstream.accept(new PossibleJump(p.immutable(), Direction.WEST, scoreJump(p, Direction.WEST)));
                     }
                 })
-                .filter(j -> !elokosa.level().getBlockState(j.getJumpTarget().offset(j.getSurfaceDirection().getNormal())).isSolid())
-                .sorted(Comparator.comparingInt(p -> -p.getWeight().asInt()))
+                .filter(j -> !elokosa.level().getBlockState(j.getJumpTarget().offset(j.getSurfaceDirection().getUnitVec3i())).isSolid())
+                .sorted(Comparator.comparingInt(p -> -p.getWeight()))
                 .collect(Collectors.toCollection(Lists::newArrayList));
     }
 
@@ -150,7 +149,7 @@ public abstract class ElokosaLeapGoal extends Goal {
             if (optional.isPresent()) {
                 PossibleJump possiblejump = optional.get();
                 BlockPos blockpos = possiblejump.getJumpTarget();
-//                EntityBlockSwapper.swapBlock(elokosa.level(), possiblejump.getJumpTarget().offset(possiblejump.getSurfaceDirection().getNormal()), Blocks.TALL_GRASS.defaultBlockState(), 10, false, false);
+//                EntityBlockSwapper.swapBlock(elokosa.level(), possiblejump.getJumpTarget().offset(possiblejump.getSurfaceDirection().getUnitVec3i()), Blocks.TALL_GRASS.defaultBlockState(), 10, false, false);
                 if (this.isAcceptableLandingPosition(possiblejump)) {
                     Vec3 vec3 = getLandingPositionFromJump(possiblejump);
                     if (elokosa.getNightForm() && possiblejump.getSurfaceDirection() == Direction.DOWN) {
@@ -178,7 +177,7 @@ public abstract class ElokosaLeapGoal extends Goal {
         EntityDimensions entityDimensions = elokosa.getDimensions(Pose.STANDING);
         Vec3 leapLocation;
         if (jump.getSurfaceDirection().getAxis().isHorizontal()) {
-            leapLocation = jump.getJumpTarget().offset(jump.getSurfaceDirection().getNormal()).getBottomCenter();
+            leapLocation = jump.getJumpTarget().offset(jump.getSurfaceDirection().getUnitVec3i()).getBottomCenter();
         }
         else if (jump.getSurfaceDirection() == Direction.DOWN) {
             leapLocation = jump.getJumpTarget().getBottomCenter().subtract(0, entityDimensions.height(), 0);
@@ -226,14 +225,19 @@ public abstract class ElokosaLeapGoal extends Goal {
         super.stop();
     }
 
-    public static class PossibleJump extends WeightedEntry.IntrusiveBase {
+    // PORTING NOTE (1.21.1 -> 26.1.2): WeightedEntry / WeightedEntry.IntrusiveBase (the old "extend this to carry a
+    // weight" base class) no longer exists - vanilla replaced it project-wide with a composition-based
+    // net.minecraft.util.random.Weighted<T> record and ToIntFunction-based weight lookups (see WeightedRandom's
+    // new signatures). This class now just carries its own plain `weight` field instead of extending anything.
+    public static class PossibleJump {
         private final BlockPos jumpTarget;
         private final Direction surfaceDirection;
+        private final int weight;
 
         public PossibleJump(BlockPos jumpTarget, Direction surfaceDirection, int weight) {
-            super(weight);
             this.jumpTarget = jumpTarget;
             this.surfaceDirection = surfaceDirection;
+            this.weight = weight;
         }
 
         public BlockPos getJumpTarget() {
@@ -242,6 +246,10 @@ public abstract class ElokosaLeapGoal extends Goal {
 
         public Direction getSurfaceDirection() {
             return surfaceDirection;
+        }
+
+        public int getWeight() {
+            return weight;
         }
     }
 }

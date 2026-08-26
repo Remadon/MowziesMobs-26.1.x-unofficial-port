@@ -32,7 +32,11 @@ public class FallbackPoolElement extends StructurePoolElement {
         return Vec3i.ZERO;
     }
 
-    public List<StructureTemplate.StructureBlockInfo> getShuffledJigsawBlocks(StructureTemplateManager p_210198_, BlockPos p_210199_, Rotation p_210200_, RandomSource p_210201_) {
+    // PORTING NOTE (1.21.1 -> 26.1.2): StructurePoolElement#getShuffledJigsawBlocks now returns
+    // List<StructureTemplate.JigsawBlockInfo> instead of List<StructureTemplate.StructureBlockInfo> (see
+    // MowzieJigsawManager.java for the fuller writeup).
+    @Override
+    public List<StructureTemplate.JigsawBlockInfo> getShuffledJigsawBlocks(StructureTemplateManager p_210198_, BlockPos p_210199_, Rotation p_210200_, RandomSource p_210201_) {
         return Collections.emptyList();
     }
 

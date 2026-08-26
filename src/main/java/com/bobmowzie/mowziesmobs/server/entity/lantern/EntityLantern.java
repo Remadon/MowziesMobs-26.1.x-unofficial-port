@@ -58,7 +58,7 @@ public class EntityLantern extends MowzieLLibraryEntity {
         super(type, world);
         dir = null;
 
-        if (world.isClientSide) {
+        if (world.isClientSide()) {
             pos = new Vec3[1];
         }
         this.moveControl = new MoveHelperController(this);
@@ -91,7 +91,7 @@ public class EntityLantern extends MowzieLLibraryEntity {
         if (getAnimation() == PUFF_ANIMATION && getAnimationTick() == 7) {
             if (groundDist == 0) groundDist = 1;
             setDeltaMovement(getDeltaMovement().add(0, 0.2d + 0.2d / groundDist, 0));
-            if (level().isClientSide) {
+            if (level().isClientSide()) {
                 for (int i = 0; i < 5; i++) {
                     ParticleVanillaCloudExtended.spawnVanillaCloud(level(), getX(), getY() + 0.3, getZ(), -getDeltaMovement().x() * 0.2 + 0.1 * (random.nextFloat() - 0.5), -getDeltaMovement().y() * 0.2 + 0.1 * (random.nextFloat() - 0.5), -getDeltaMovement().z() * 0.2 + 0.1 * (random.nextFloat() - 0.5), 0.8d + random.nextDouble() * 1d, 163d / 256d, 247d / 256d, 74d / 256d, 0.95, 30);
                 }
@@ -117,7 +117,7 @@ public class EntityLantern extends MowzieLLibraryEntity {
             playSound(MMSounds.ENTITY_LANTERN_PUFF.get(), 0.6f, 1f + random.nextFloat() * 0.2f);
         }
 
-        if (!level().isClientSide && getAnimation() == NO_ANIMATION) {
+        if (!level().isClientSide() && getAnimation() == NO_ANIMATION) {
             if (groundDist < 5 || (random.nextInt(13) == 0 && groundDist < 16)) {
                 AnimationHandler.INSTANCE.sendAnimationMessage(this, PUFF_ANIMATION);
             }
@@ -135,7 +135,7 @@ public class EntityLantern extends MowzieLLibraryEntity {
             groundDist = i;
         }
 
-        if (level().isClientSide && ConfigHandler.CLIENT.glowEffect.get()) {
+        if (level().isClientSide() && ConfigHandler.CLIENT.glowEffect.get()) {
             pos[0] = position().add(0, getBbHeight() * 0.8, 0);
             if (tickCount % 70 == 0) {
                 AdvancedParticleBase.spawnParticle(level(), ParticleHandler.GLOW, pos[0].x, pos[0].y, pos[0].z, 0, 0, 0, true, 0, 0, 0, 0, 20F, 0.8, 0.95, 0.35, 1, 1, 70, true, true, new ParticleComponent[]{
@@ -154,7 +154,7 @@ public class EntityLantern extends MowzieLLibraryEntity {
     @Override
     protected void tickDeath() {
         super.tickDeath();
-        if (getAnimationTick() == 1 && level().isClientSide) {
+        if (getAnimationTick() == 1 && level().isClientSide()) {
             for (int i = 0; i < 8; i++) {
                 level().addParticle(ParticleTypes.ITEM_SLIME, getX(), getY(), getZ(), 0.2 * (random.nextFloat() - 0.5), 0.2 * (random.nextFloat() - 0.5), 0.2 * (random.nextFloat() - 0.5));
                 level().addParticle(new ParticleCloud.Data(163f / 256f, 247f / 256f, 74f / 256f, 10f + random.nextFloat() * 20f, 30, ParticleCloud.EnumCloudBehavior.GROW, 0.9f), getX(), getY() + 0.3, getZ(), 0.25 * (random.nextFloat() - 0.5), 0.25 * (random.nextFloat() - 0.5), 0.25 * (random.nextFloat() - 0.5));
@@ -228,11 +228,6 @@ public class EntityLantern extends MowzieLLibraryEntity {
     @Override
     public Animation[] getAnimations() {
         return ANIMATIONS;
-    }
-
-    @Override
-    protected ResourceKey<LootTable> getDefaultLootTable() {
-        return LootTableHandler.LANTERN;
     }
 
     @Override

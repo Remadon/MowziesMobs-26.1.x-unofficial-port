@@ -4,7 +4,7 @@ import com.bobmowzie.mowziesmobs.MMCommon;
 import com.google.common.collect.ImmutableList;
 import net.minecraft.core.registries.Registries;
 import net.minecraft.resources.ResourceKey;
-import net.minecraft.resources.ResourceLocation;
+import net.minecraft.resources.Identifier;
 import net.minecraft.sounds.SoundEvent;
 import net.minecraft.world.item.JukeboxSong;
 import net.neoforged.neoforge.registries.DeferredHolder;
@@ -325,7 +325,7 @@ public final class MMSounds {
     public static final DeferredHolder<SoundEvent, SoundEvent> MISC_METAL_IMPACT = create("misc.metal_impact");
 
     // Jukebox Songs
-    public static ResourceKey<JukeboxSong> JUKEBOX_PETIOLE = ResourceKey.create(Registries.JUKEBOX_SONG, ResourceLocation.fromNamespaceAndPath(MMCommon.MODID, "14"));
+    public static ResourceKey<JukeboxSong> JUKEBOX_PETIOLE = ResourceKey.create(Registries.JUKEBOX_SONG, Identifier.fromNamespaceAndPath(MMCommon.MODID, "14"));
 
     // Music
     public static final DeferredHolder<SoundEvent, SoundEvent> MUSIC_BLACK_PINK = create("music.black_pink");
@@ -346,6 +346,6 @@ public final class MMSounds {
     public static final DeferredHolder<SoundEvent, SoundEvent> MUSIC_SCULPTOR_THEME_COMBAT = create("music.sculptor_theme_combat");
 
     private static DeferredHolder<SoundEvent, SoundEvent> create(String name) {
-        return REG.register(name, () -> SoundEvent.createVariableRangeEvent(ResourceLocation.fromNamespaceAndPath(MMCommon.MODID, name)));
+        return REG.register(name, () -> SoundEvent.createVariableRangeEvent(Identifier.fromNamespaceAndPath(MMCommon.MODID, name)));
     }
 }

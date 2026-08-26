@@ -2,6 +2,7 @@ package com.bobmowzie.mowziesmobs.server.entity.effects;
 
 import com.bobmowzie.mowziesmobs.server.entity.ILinkedEntity;
 import com.bobmowzie.mowziesmobs.server.message.MessageLinkEntities;
+import net.minecraft.core.UUIDUtil;
 import net.minecraft.nbt.CompoundTag;
 import net.minecraft.network.protocol.Packet;
 import net.minecraft.network.protocol.game.ClientGamePacketListener;
@@ -17,6 +18,8 @@ import net.minecraft.world.entity.LivingEntity;
 import net.minecraft.world.level.ClipContext;
 import net.minecraft.world.level.Level;
 import net.minecraft.world.level.material.PushReaction;
+import net.minecraft.world.level.storage.ValueInput;
+import net.minecraft.world.level.storage.ValueOutput;
 import net.minecraft.world.phys.BlockHitResult;
 import net.minecraft.world.phys.HitResult;
 import net.minecraft.world.phys.Vec3;
@@ -34,7 +37,7 @@ import java.util.UUID;
 public abstract class EntityMagicEffect extends Entity implements ILinkedEntity {
     private LivingEntity cachedCaster;
     protected boolean hasSyncedCaster = false;
-    private static final EntityDataAccessor<Optional<UUID>> CASTER = SynchedEntityData.defineId(EntityMagicEffect.class, EntityDataSerializers.OPTIONAL_UUID);
+    private static final EntityDataAccessor<Optional<UUID>> CASTER = SynchedEntityData.defineId(EntityMagicEffect.class, com.bobmowzie.mowziesmobs.server.entity.EntityHandler.OPTIONAL_UUID.get());
 
     public EntityMagicEffect(EntityType<? extends EntityMagicEffect> type, Level worldIn) {
         super(type, worldIn);
@@ -42,7 +45,7 @@ public abstract class EntityMagicEffect extends Entity implements ILinkedEntity 
 
     public EntityMagicEffect(EntityType<? extends EntityMagicEffect> type, Level world, LivingEntity caster) {
         super(type, world);
-        if (!world.isClientSide && caster != null) {
+        if (!world.isClientSide() && caster != null) {
             this.setCasterID(caster.getUUID());
         }
     }
@@ -78,6 +81,16 @@ public abstract class EntityMagicEffect extends Entity implements ILinkedEntity 
         } else {
             return null;
         }
+    }
+
+    @Override
+    public boolean hurtServer(ServerLevel level, net.minecraft.world.damagesource.DamageSource source, float amount) {
+        // NOTE 26.1.2 port: Entity#hurt(DamageSource, float) was final/no-op-by-default pre-port; the new abstract
+        // Entity#hurtServer(ServerLevel, DamageSource, float) has no default implementation, so every concrete leaf
+        // class must provide one. All EntityMagicEffect subclasses were relying on the old inert default (magic
+        // effect entities can't be "hurt" via the normal damage pipeline), so that default is reproduced here once
+        // for the whole hierarchy rather than duplicated in every leaf subclass.
+        return false;
     }
 
     @Override
@@ -120,14 +133,14 @@ public abstract class EntityMagicEffect extends Entity implements ILinkedEntity 
     }
 
     @Override
-    protected void readAdditionalSaveData(CompoundTag compound) {
-        setCasterID(compound.getUUID("caster"));
+    protected void readAdditionalSaveData(ValueInput input) {
+        input.read("caster", UUIDUtil.CODEC).ifPresent(this::setCasterID);
     }
 
     @Override
-    protected void addAdditionalSaveData(CompoundTag compound) {
+    protected void addAdditionalSaveData(ValueOutput output) {
         if (getCasterID().isPresent()) {
-            compound.putUUID("caster", getCasterID().get());
+            output.store("caster", UUIDUtil.CODEC, getCasterID().get());
         }
     }
 

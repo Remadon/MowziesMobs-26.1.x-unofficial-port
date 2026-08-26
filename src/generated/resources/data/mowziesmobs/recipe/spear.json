@@ -2,15 +2,9 @@
   "type": "minecraft:crafting_shaped",
   "category": "equipment",
   "key": {
-    "E": {
-      "tag": "c:feathers"
-    },
-    "F": {
-      "item": "minecraft:flint"
-    },
-    "S": {
-      "tag": "c:rods/wooden"
-    }
+    "E": "#c:feathers",
+    "F": "minecraft:flint",
+    "S": "#c:rods/wooden"
   },
   "pattern": [
     " F ",
@@ -18,7 +12,6 @@
     " S "
   ],
   "result": {
-    "count": 1,
     "id": "mowziesmobs:spear"
   }
 }

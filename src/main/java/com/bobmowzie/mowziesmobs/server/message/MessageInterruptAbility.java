@@ -9,14 +9,14 @@ import io.netty.buffer.ByteBuf;
 import net.minecraft.network.codec.ByteBufCodecs;
 import net.minecraft.network.codec.StreamCodec;
 import net.minecraft.network.protocol.common.custom.CustomPacketPayload;
-import net.minecraft.resources.ResourceLocation;
+import net.minecraft.resources.Identifier;
 import net.minecraft.world.entity.LivingEntity;
 import net.minecraft.world.level.Level;
 import net.neoforged.neoforge.network.handling.IPayloadContext;
 import org.jetbrains.annotations.NotNull;
 
 public record MessageInterruptAbility(int entityId, int index) implements CustomPacketPayload {
-    public static final CustomPacketPayload.Type<MessageInterruptAbility> TYPE = new CustomPacketPayload.Type<>(ResourceLocation.fromNamespaceAndPath(MMCommon.MODID, "message_interrupt_ability"));
+    public static final CustomPacketPayload.Type<MessageInterruptAbility> TYPE = new CustomPacketPayload.Type<>(Identifier.fromNamespaceAndPath(MMCommon.MODID, "message_interrupt_ability"));
     public static final StreamCodec<ByteBuf, MessageInterruptAbility> STREAM_CODEC = StreamCodec.composite(
             ByteBufCodecs.INT,
             MessageInterruptAbility::entityId,

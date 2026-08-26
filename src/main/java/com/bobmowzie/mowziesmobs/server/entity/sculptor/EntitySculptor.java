@@ -36,6 +36,7 @@ import com.bobmowzie.mowziesmobs.server.potion.EffectGeomancy;
 import com.bobmowzie.mowziesmobs.server.sound.MMSounds;
 import net.minecraft.core.BlockPos;
 import net.minecraft.core.Direction;
+import net.minecraft.core.UUIDUtil;
 import net.minecraft.core.registries.BuiltInRegistries;
 import net.minecraft.nbt.CompoundTag;
 import net.minecraft.nbt.Tag;
@@ -44,7 +45,7 @@ import net.minecraft.network.syncher.EntityDataAccessor;
 import net.minecraft.network.syncher.EntityDataSerializers;
 import net.minecraft.network.syncher.SynchedEntityData;
 import net.minecraft.resources.ResourceKey;
-import net.minecraft.resources.ResourceLocation;
+import net.minecraft.resources.Identifier;
 import net.minecraft.server.level.ServerLevel;
 import net.minecraft.server.level.ServerPlayer;
 import net.minecraft.sounds.SoundEvent;
@@ -78,6 +79,8 @@ import net.minecraft.world.level.Level;
 import net.minecraft.world.level.block.Blocks;
 import net.minecraft.world.level.block.state.BlockState;
 import net.minecraft.world.level.material.PushReaction;
+import net.minecraft.world.level.storage.ValueInput;
+import net.minecraft.world.level.storage.ValueOutput;
 import net.minecraft.world.level.storage.loot.LootParams;
 import net.minecraft.world.level.storage.loot.LootTable;
 import net.minecraft.world.level.storage.loot.parameters.LootContextParamSets;
@@ -87,12 +90,13 @@ import net.minecraft.world.scores.Team;
 import org.jetbrains.annotations.NotNull;
 import org.joml.Matrix4f;
 import org.joml.Vector3d;
-import software.bernie.geckolib.animatable.GeoEntity;
-import software.bernie.geckolib.animatable.GeoItem;
-import software.bernie.geckolib.animation.AnimatableManager;
-import software.bernie.geckolib.animation.Animation;
-import software.bernie.geckolib.animation.AnimationState;
-import software.bernie.geckolib.animation.RawAnimation;
+import com.geckolib.animatable.GeoEntity;
+import com.geckolib.animatable.GeoItem;
+import com.geckolib.animatable.manager.AnimatableManager;
+import com.geckolib.cache.animation.Animation;
+import com.geckolib.animation.object.LoopType;
+import com.geckolib.animation.state.AnimationTest;
+import com.geckolib.animation.RawAnimation;
 
 import javax.annotation.Nullable;
 import java.util.*;
@@ -158,7 +162,7 @@ public class EntitySculptor extends MowzieGeckoEntity {
     private static final EntityDataAccessor<ItemStack> DESIRES = SynchedEntityData.defineId(EntitySculptor.class, EntityDataSerializers.ITEM_STACK);
     private static final EntityDataAccessor<Boolean> IS_TRADING = SynchedEntityData.defineId(EntitySculptor.class, EntityDataSerializers.BOOLEAN);
     private static final EntityDataAccessor<Boolean> IS_FIGHTING = SynchedEntityData.defineId(EntitySculptor.class, EntityDataSerializers.BOOLEAN);
-    private static final EntityDataAccessor<Optional<UUID>> TESTING_PLAYER = SynchedEntityData.defineId(EntitySculptor.class, EntityDataSerializers.OPTIONAL_UUID);
+    private static final EntityDataAccessor<Optional<UUID>> TESTING_PLAYER = SynchedEntityData.defineId(EntitySculptor.class, com.bobmowzie.mowziesmobs.server.entity.EntityHandler.OPTIONAL_UUID.get());
 
     private Player customer;
     private Player testingPlayer;
@@ -195,7 +199,7 @@ public class EntitySculptor extends MowzieGeckoEntity {
 
         heldStaff = new ItemStack(ItemHandler.SCULPTOR_STAFF.get());
 
-        if (world.isClientSide) {
+        if (world.isClientSide()) {
             beardChain = new GeckoDynamicChain(this);
             dynamicChains = new GeckoDynamicChain[] {
                     beardChain
@@ -289,7 +293,7 @@ public class EntitySculptor extends MowzieGeckoEntity {
     @Override
     protected void defineSynchedData(@NotNull SynchedEntityData.Builder builder) {
         super.defineSynchedData(builder);
-        builder.define(DESIRES, new ItemStack(BuiltInRegistries.ITEM.get(ResourceLocation.tryParse(ConfigHandler.COMMON.MOBS.SCULPTOR.whichItem.get())), ConfigHandler.COMMON.MOBS.SCULPTOR.howMany.get()));
+        builder.define(DESIRES, new ItemStack(BuiltInRegistries.ITEM.getValue(Identifier.tryParse(ConfigHandler.COMMON.MOBS.SCULPTOR.whichItem.get())), ConfigHandler.COMMON.MOBS.SCULPTOR.howMany.get()));
         builder.define(IS_TRADING, false);
         builder.define(IS_FIGHTING, false);
         builder.define(TESTING_PLAYER, Optional.empty());
@@ -305,8 +309,8 @@ public class EntitySculptor extends MowzieGeckoEntity {
     private static RawAnimation TEST_OBSTRUCTED = RawAnimation.begin().thenLoop("test_obstructed");
 
     @Override
-    protected <E extends GeoEntity> void loopingAnimations(AnimationState<E> event) {
-        event.getController().transitionLength(10);
+    protected <E extends GeoEntity> void loopingAnimations(AnimationTest<E> event) {
+        event.controller().setTransitionTicks(10);
         if (isTestObstructed && !isFighting()) {
             controller.setAnimation(TEST_OBSTRUCTED);
         }
@@ -359,7 +363,7 @@ public class EntitySculptor extends MowzieGeckoEntity {
     }
 
     @Override
-    public boolean causeFallDamage(float p_147187_, float p_147188_, DamageSource p_147189_) {
+    public boolean causeFallDamage(double p_147187_, float p_147188_, DamageSource p_147189_) {
         return false;
     }
 
@@ -450,7 +454,7 @@ public class EntitySculptor extends MowzieGeckoEntity {
             }
         }
 
-        if (!level().isClientSide && getTarget() == null) {
+        if (!level().isClientSide() && getTarget() == null) {
             timeUntilHeal--;
             if (ConfigHandler.COMMON.MOBS.SCULPTOR.healsOutOfBattle.get() && timeUntilHeal <= 0) heal(0.3f);
         }
@@ -485,12 +489,12 @@ public class EntitySculptor extends MowzieGeckoEntity {
     }
 
     @Override
-    public boolean hurt(DamageSource source, float damage) {
+    public boolean hurtServer(ServerLevel level, DamageSource source, float damage) {
         timeUntilHeal = HEAL_PAUSE;
         if (getActiveAbilityType() == PASS_TEST || getActiveAbilityType() == DISAPPEAR_ABILITY) {
             return false;
         }
-        return super.hurt(source, damage);
+        return super.hurtServer(level, source, damage);
     }
 
     @Override
@@ -702,7 +706,7 @@ public class EntitySculptor extends MowzieGeckoEntity {
     public void openGUI(Player playerEntity) {
         setCustomer(playerEntity);
         MMCommon.PROXY.setReferencedMob(this);
-        if (!this.level().isClientSide && getTarget() == null && isAlive()) {
+        if (!this.level().isClientSide() && getTarget() == null && isAlive()) {
             playerEntity.openMenu(new MenuProvider() {
                 @Override
                 public AbstractContainerMenu createMenu(int id, Inventory playerInventory, Player player) {
@@ -763,7 +767,7 @@ public class EntitySculptor extends MowzieGeckoEntity {
     public void registerControllers(AnimatableManager.ControllerRegistrar controllers) {
         super.registerControllers(controllers);
         controller.setSoundKeyframeHandler(state -> {
-            String sound = state.getKeyframeData().getSound();
+            String sound = state.keyframeData().getSound();
             if (sound.equals("make_gauntlet_effects")) {
                 this.level().playSound(MMCommon.PROXY.getLocalPlayer(), getX(), getY(), getZ(), MMSounds.ENTITY_SCULPTOR_MAKE_GAUNTLET_EFFECTS.get(), SoundSource.NEUTRAL, 1, 1);
             }
@@ -782,24 +786,25 @@ public class EntitySculptor extends MowzieGeckoEntity {
     }
 
     @Override
-    public void addAdditionalSaveData(CompoundTag compound) {
-        super.addAdditionalSaveData(compound);
+    public void addAdditionalSaveData(ValueOutput output) {
+        super.addAdditionalSaveData(output);
         if (testingPlayer != null && getTestingPlayerID().isPresent()) {
-            compound.putUUID("TestingPlayer", getTestingPlayerID().get());
-            compound.putInt("NumLivePaths", numLivePaths);
+            output.store("TestingPlayer", UUIDUtil.CODEC, getTestingPlayerID().get());
+            output.putInt("NumLivePaths", numLivePaths);
         }
-        compound.putInt("TestTimePassed", testTimePassed);
+        output.putInt("TestTimePassed", testTimePassed);
     }
 
     @Override
-    public void readAdditionalSaveData(CompoundTag compound) {
-        super.readAdditionalSaveData(compound);
-        if (compound.contains("TestingPlayer")) {
+    public void readAdditionalSaveData(ValueInput input) {
+        super.readAdditionalSaveData(input);
+        Optional<UUID> testingPlayerId = input.read("TestingPlayer", UUIDUtil.CODEC);
+        if (testingPlayerId.isPresent()) {
             testing = true;
-            setTestingPlayerID(compound.getUUID("TestingPlayer"));
-            numLivePaths = compound.getInt("NumLivePaths");
+            setTestingPlayerID(testingPlayerId.get());
+            numLivePaths = input.getIntOr("NumLivePaths", 0);
         }
-        testTimePassed = compound.getInt("TestTimePassed");
+        testTimePassed = input.getIntOr("TestTimePassed", 0);
     }
 
     public boolean isPlayerInTestZone(Player player) {
@@ -828,11 +833,6 @@ public class EntitySculptor extends MowzieGeckoEntity {
             return deathAbility.getTicksInUse() - deathAbility.getTicksInSection() + 84;
         }
         return 94;
-    }
-
-    @Override
-    protected @NotNull ResourceKey<LootTable> getDefaultLootTable() {
-        return LootTableHandler.SCULPTOR;
     }
 
     public int getTestTimePassed() {
@@ -907,7 +907,7 @@ public class EntitySculptor extends MowzieGeckoEntity {
             return false;
         }
 
-        private static final RawAnimation TEST_START_ANIM = RawAnimation.begin().then("testStart", Animation.LoopType.PLAY_ONCE);
+        private static final RawAnimation TEST_START_ANIM = RawAnimation.begin().then("testStart", LoopType.PLAY_ONCE);
         @Override
         public void start() {
             super.start();
@@ -1049,7 +1049,7 @@ public class EntitySculptor extends MowzieGeckoEntity {
             super(abilityType, user, 30);
         }
 
-        private static final RawAnimation TEST_FAIL_START = RawAnimation.begin().then("test_fail_start", Animation.LoopType.HOLD_ON_LAST_FRAME);
+        private static final RawAnimation TEST_FAIL_START = RawAnimation.begin().then("test_fail_start", LoopType.HOLD_ON_LAST_FRAME);
         private static RawAnimation TEST_FAIL_END = RawAnimation.begin().thenLoop("test_fail_end");
 
         @Override
@@ -1147,7 +1147,7 @@ public class EntitySculptor extends MowzieGeckoEntity {
             return true;
         }
 
-        private static final RawAnimation TEST_PASS_START = RawAnimation.begin().then("test_pass_start", Animation.LoopType.HOLD_ON_LAST_FRAME);
+        private static final RawAnimation TEST_PASS_START = RawAnimation.begin().then("test_pass_start", LoopType.HOLD_ON_LAST_FRAME);
         private static RawAnimation TEST_PASS_END = RawAnimation.begin().thenLoop("test_pass_end");
 
         @Override
@@ -1507,7 +1507,7 @@ public class EntitySculptor extends MowzieGeckoEntity {
         public CompoundTag writeNBT() {
             CompoundTag nbt = super.writeNBT();
             if (boulderID != null) {
-                nbt.putUUID("boulder_guard", boulderID);
+                nbt.store("boulder_guard", UUIDUtil.CODEC, boulderID);
             }
             return nbt;
         }
@@ -1516,9 +1516,7 @@ public class EntitySculptor extends MowzieGeckoEntity {
         public void readNBT(Tag nbt) {
             super.readNBT(nbt);
             CompoundTag compound = (CompoundTag) nbt;
-            if (compound.hasUUID("boulder_guard")) {
-                boulderID = compound.getUUID("boulder_guard");
-            }
+            compound.read("boulder_guard", UUIDUtil.CODEC).ifPresent(uuid -> boulderID = uuid);
         }
 
         public EntityBoulderProjectile getBoulder() {

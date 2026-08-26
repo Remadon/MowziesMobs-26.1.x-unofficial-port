@@ -29,7 +29,7 @@ import net.minecraft.world.effect.MobEffectInstance;
 import net.minecraft.world.effect.MobEffects;
 import net.minecraft.world.entity.EntityType;
 import net.minecraft.world.entity.LivingEntity;
-import net.minecraft.world.entity.MobSpawnType;
+import net.minecraft.world.entity.EntitySpawnReason;
 import net.minecraft.world.entity.PathfinderMob;
 import net.minecraft.world.entity.ai.attributes.AttributeSupplier;
 import net.minecraft.world.entity.ai.attributes.Attributes;
@@ -42,8 +42,12 @@ import net.minecraft.world.level.Level;
 import net.minecraft.world.level.LevelAccessor;
 import net.minecraft.world.level.block.state.BlockState;
 import net.minecraft.world.level.material.PushReaction;
+import net.minecraft.world.level.storage.ValueInput;
+import net.minecraft.world.level.storage.ValueOutput;
 import net.minecraft.world.level.storage.loot.LootTable;
 import org.jetbrains.annotations.NotNull;
+
+import java.util.Optional;
 
 public class EntityFoliaath extends MowzieLLibraryEntity implements Enemy {
     public static final Animation DIE_ANIMATION = Animation.create(50);
@@ -52,7 +56,7 @@ public class EntityFoliaath extends MowzieLLibraryEntity implements Enemy {
     private static final EntityDataAccessor<Boolean> CAN_DESPAWN = SynchedEntityData.defineId(EntityFoliaath.class, EntityDataSerializers.BOOLEAN);
     private static final EntityDataAccessor<Integer> ACTIVATE_TARGET = SynchedEntityData.defineId(EntityFoliaath.class, EntityDataSerializers.INT);
     private static final int ACTIVATE_DURATION = 30;
-    public IntermittentAnimation<EntityFoliaath> openMouth = new IntermittentAnimation<>(this, 15, 30, 50, !level().isClientSide);
+    public IntermittentAnimation<EntityFoliaath> openMouth = new IntermittentAnimation<>(this, 15, 30, 50, !level().isClientSide());
     public ControlledAnimation activate = new ControlledAnimation(ACTIVATE_DURATION);
     public ControlledAnimation deathFlail = new ControlledAnimation(5);
     public ControlledAnimation stopDance = new ControlledAnimation(10);
@@ -93,7 +97,7 @@ public class EntityFoliaath extends MowzieLLibraryEntity implements Enemy {
         this.goalSelector.addGoal(1, new AnimationAttackAI<>(this, ATTACK_ANIMATION, MMSounds.ENTITY_FOLIAATH_BITE_1.get(), null, 2, 4F, 1, 3));
         this.goalSelector.addGoal(1, new AnimationTakeDamage<>(this));
         this.goalSelector.addGoal(1, new AnimationDieAI<>(this));
-        this.targetSelector.addGoal(3, new NearestAttackableTargetGoal(this, LivingEntity.class, 0, true, false, e ->
+        this.targetSelector.addGoal(3, new NearestAttackableTargetGoal(this, LivingEntity.class, 0, true, false, (e, eLevel) ->
                 (PathfinderMob.class.isAssignableFrom(e.getClass()) || e instanceof Player) && !(e instanceof EntityFoliaath || e instanceof EntityBabyFoliaath || e instanceof Creeper)) {
                     @Override
                     public boolean canContinueToUse() {
@@ -179,7 +183,7 @@ public class EntityFoliaath extends MowzieLLibraryEntity implements Enemy {
         prevOpenMouth = openMouthTime;
 
         int activateTime = activate.getTimer();
-        if (!level().isClientSide) {
+        if (!level().isClientSide()) {
             SoundEvent sound = null;
             if (prevActivate - activateTime < 0) {
                 switch (activateTime) {
@@ -211,7 +215,7 @@ public class EntityFoliaath extends MowzieLLibraryEntity implements Enemy {
         yBodyRot = 0;
         setYRot(0);
 
-        if (resettingTargetTimer > 0 && !level().isClientSide) {
+        if (resettingTargetTimer > 0 && !level().isClientSide()) {
             yHeadRot = yHeadRotO;
         }
 
@@ -229,7 +233,7 @@ public class EntityFoliaath extends MowzieLLibraryEntity implements Enemy {
                 setActivateTarget(0);
                 lastTimeDecrease++;
             }
-        } else if (!level().isClientSide && lastTimeDecrease <= 30 && getAnimation() == NO_ANIMATION && resettingTargetTimer == 0) {
+        } else if (!level().isClientSide() && lastTimeDecrease <= 30 && getAnimation() == NO_ANIMATION && resettingTargetTimer == 0) {
             setActivateTarget(0);
             lastTimeDecrease++;
         }
@@ -254,16 +258,16 @@ public class EntityFoliaath extends MowzieLLibraryEntity implements Enemy {
             activate.increaseTimer(activateTime < activateTarget ? 1 : -2);
         }
 
-        if (!this.level().isClientSide && this.level().getDifficulty() == Difficulty.PEACEFUL)
+        if (!this.level().isClientSide() && this.level().getDifficulty() == Difficulty.PEACEFUL)
         {
             this.discard() ;
         }
     }
 
     @Override
-    public boolean hurt(DamageSource damageSource, float amount) {
+    public boolean hurtServer(ServerLevel level, DamageSource damageSource, float amount) {
         openMouth.resetTimeRunning();
-        return (damageSource.is(DamageTypeTags.BYPASSES_INVULNERABILITY) || active) && super.hurt(damageSource, amount);
+        return (damageSource.is(DamageTypeTags.BYPASSES_INVULNERABILITY) || active) && super.hurtServer(level, damageSource, amount);
     }
 
     @Override
@@ -310,14 +314,14 @@ public class EntityFoliaath extends MowzieLLibraryEntity implements Enemy {
     }
 
     @Override
-    public boolean checkSpawnRules(LevelAccessor world, MobSpawnType reason) {
+    public boolean checkSpawnRules(LevelAccessor world, EntitySpawnReason reason) {
         return !isInTree(world) && super.checkSpawnRules(world, reason) && getEntitiesNearby(Animal.class, 5, 5, 5, 5).isEmpty() && world.getDifficulty() != Difficulty.PEACEFUL;
     }
 
     @Override
-    public boolean killedEntity(ServerLevel world, LivingEntity killedEntity) {
+    public boolean killedEntity(ServerLevel world, LivingEntity killedEntity, DamageSource source) {
         this.addEffect(new MobEffectInstance(MobEffects.REGENERATION, 300, 1, true, true));
-        return super.killedEntity(world, killedEntity);
+        return super.killedEntity(world, killedEntity, source);
     }
 
     @Override
@@ -338,15 +342,15 @@ public class EntityFoliaath extends MowzieLLibraryEntity implements Enemy {
     }
 
     @Override
-    public void addAdditionalSaveData(CompoundTag compound) {
-        super.addAdditionalSaveData(compound);
-        compound.putBoolean("canDespawn", getEntityData().get(CAN_DESPAWN));
+    public void addAdditionalSaveData(ValueOutput output) {
+        super.addAdditionalSaveData(output);
+        output.putBoolean("canDespawn", getEntityData().get(CAN_DESPAWN));
     }
 
     @Override
-    public void readAdditionalSaveData(CompoundTag compound) {
-        super.readAdditionalSaveData(compound);
-        setCanDespawn(compound.getBoolean("canDespawn"));
+    public void readAdditionalSaveData(ValueInput input) {
+        super.readAdditionalSaveData(input);
+        setCanDespawn(input.getBooleanOr("canDespawn", true));
     }
 
     @Override
@@ -359,8 +363,4 @@ public class EntityFoliaath extends MowzieLLibraryEntity implements Enemy {
         return new Animation[]{DIE_ANIMATION, HURT_ANIMATION, ATTACK_ANIMATION};
     }
 
-    @Override
-    protected ResourceKey<LootTable> getDefaultLootTable() {
-        return LootTableHandler.FOLIAATH;
-    }
 }

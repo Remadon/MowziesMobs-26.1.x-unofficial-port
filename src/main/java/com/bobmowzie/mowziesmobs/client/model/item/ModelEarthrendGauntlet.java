@@ -2,24 +2,25 @@ package com.bobmowzie.mowziesmobs.client.model.item;
 
 import com.bobmowzie.mowziesmobs.MMCommon;
 import com.bobmowzie.mowziesmobs.server.item.ItemEarthrendGauntlet;
-import net.minecraft.resources.ResourceLocation;
-import software.bernie.geckolib.model.GeoModel;
+import com.geckolib.model.GeoModel;
+import com.geckolib.renderer.base.GeoRenderState;
+import net.minecraft.resources.Identifier;
 
 public class ModelEarthrendGauntlet extends GeoModel<ItemEarthrendGauntlet> {
-    public static final ResourceLocation TEXTURE = ResourceLocation.fromNamespaceAndPath(MMCommon.MODID, "textures/item/earthrend_gauntlet.png");
+    public static final Identifier TEXTURE = Identifier.fromNamespaceAndPath(MMCommon.MODID, "textures/item/earthrend_gauntlet.png");
 
     @Override
-    public ResourceLocation getModelResource(ItemEarthrendGauntlet object) {
-        return ResourceLocation.fromNamespaceAndPath(MMCommon.MODID, "geo/earthrend_gauntlet.geo.json");
+    public Identifier getModelResource(GeoRenderState renderState) {
+        return Identifier.fromNamespaceAndPath(MMCommon.MODID, "earthrend_gauntlet");
     }
 
     @Override
-    public ResourceLocation getTextureResource(ItemEarthrendGauntlet object) {
+    public Identifier getTextureResource(GeoRenderState renderState) {
         return TEXTURE;
     }
 
     @Override
-    public ResourceLocation getAnimationResource(ItemEarthrendGauntlet animatable) {
-        return ResourceLocation.fromNamespaceAndPath(MMCommon.MODID, "animations/earthrend_gauntlet.animation.json");
+    public Identifier getAnimationResource(ItemEarthrendGauntlet animatable) {
+        return Identifier.fromNamespaceAndPath(MMCommon.MODID, "earthrend_gauntlet");
     }
 }

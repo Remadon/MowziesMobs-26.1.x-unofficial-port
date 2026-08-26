@@ -24,6 +24,7 @@ import net.minecraft.network.syncher.EntityDataAccessor;
 import net.minecraft.network.syncher.EntityDataSerializers;
 import net.minecraft.network.syncher.SynchedEntityData;
 import net.minecraft.resources.ResourceKey;
+import net.minecraft.server.level.ServerLevel;
 import net.minecraft.sounds.SoundEvent;
 import net.minecraft.sounds.SoundSource;
 import net.minecraft.tags.DamageTypeTags;
@@ -48,6 +49,8 @@ import net.minecraft.world.level.block.RenderShape;
 import net.minecraft.world.level.block.SoundType;
 import net.minecraft.world.level.block.state.BlockState;
 import net.minecraft.world.level.material.PushReaction;
+import net.minecraft.world.level.storage.ValueInput;
+import net.minecraft.world.level.storage.ValueOutput;
 import net.minecraft.world.level.storage.loot.LootTable;
 import net.minecraft.world.phys.Vec3;
 import org.jetbrains.annotations.NotNull;
@@ -171,7 +174,7 @@ public class EntityWroughtnaut extends MowzieLLibraryEntity implements Enemy {
     }
 
     @Override
-    public boolean hurt(DamageSource source, float amount) {
+    public boolean hurtServer(ServerLevel level, DamageSource source, float amount) {
         Entity entitySource = source.getEntity();
         if (entitySource != null) {
             if ((!active || getTarget() == null) && entitySource instanceof LivingEntity && !(entitySource instanceof Player && ((Player) entitySource).isCreative()) && !(entitySource instanceof EntityWroughtnaut)) setTarget((LivingEntity) entitySource);
@@ -191,14 +194,14 @@ public class EntityWroughtnaut extends MowzieLLibraryEntity implements Enemy {
                     return false;
                 } else {
                     setAnimation(NO_ANIMATION);
-                    return super.hurt(source, amount);
+                    return super.hurtServer(level, source, amount);
                 }
             } else {
                 playSound(MMSounds.ENTITY_WROUGHT_UNDAMAGED.get(), 0.4F, 2);
             }
         }
         else if (source.is(DamageTypeTags.BYPASSES_INVULNERABILITY)) {
-            return super.hurt(source, amount);
+            return super.hurtServer(level, source, amount);
         }
         return false;
     }
@@ -237,7 +240,7 @@ public class EntityWroughtnaut extends MowzieLLibraryEntity implements Enemy {
 
         if (getTarget() != null && (!getTarget().isAlive() || getTarget().getHealth() <= 0)) setTarget(null);
 
-        if (!level().isClientSide) {
+        if (!level().isClientSide()) {
             if (isAlwaysActive()) {
                 setActive(true);
                 active = true;
@@ -300,13 +303,13 @@ public class EntityWroughtnaut extends MowzieLLibraryEntity implements Enemy {
             walkAnim.decreaseTimer(2);
         }
 
-        if (this.level().isClientSide && frame % 20 == 1 && speed > 0.03 && getAnimation() == NO_ANIMATION && isActive()) {
+        if (this.level().isClientSide() && frame % 20 == 1 && speed > 0.03 && getAnimation() == NO_ANIMATION && isActive()) {
             this.level().playLocalSound(this.getX(), this.getY(), this.getZ(), MMSounds.ENTITY_WROUGHT_STEP.get(), this.getSoundSource(), 0.5F, 0.5F, false);
         }
 
         repelEntities(1.7F, 4, 1.7F, 1.7F);
 
-        if (!active && !level().isClientSide && getAnimation() != ACTIVATE_ANIMATION) {
+        if (!active && !level().isClientSide() && getAnimation() != ACTIVATE_ANIMATION) {
             if (ConfigHandler.COMMON.MOBS.FERROUS_WROUGHTNAUT.healsOutOfBattle.get()) heal(0.3f);
         }
 
@@ -432,14 +435,14 @@ public class EntityWroughtnaut extends MowzieLLibraryEntity implements Enemy {
                 double fx = getX() + vx + perpX * side;
                 double fy = getBoundingBox().minY + 0.1;
                 double fz = getZ() + vz + perpZ * side;
-                int amount = 16 + level().random.nextInt(8);
+                int amount = 16 + level().getRandom().nextInt(8);
                 while (amount-- > 0) {
-                    double theta = level().random.nextDouble() * Math.PI * 2;
-                    double dist = level().random.nextDouble() * 0.1 + 0.25;
+                    double theta = level().getRandom().nextDouble() * Math.PI * 2;
+                    double dist = level().getRandom().nextDouble() * 0.1 + 0.25;
                     double sx = Math.cos(theta);
                     double sz = Math.sin(theta);
                     double px = fx + sx * dist;
-                    double py = fy + level().random.nextDouble() * 0.1;
+                    double py = fy + level().getRandom().nextDouble() * 0.1;
                     double pz = fz + sz * dist;
                     level().addParticle(ParticleTypes.SMOKE, px, py, pz, sx * 0.065, 0, sz * 0.065);
                 }
@@ -455,13 +458,13 @@ public class EntityWroughtnaut extends MowzieLLibraryEntity implements Enemy {
                     double px = getX() + vx * distance;
                     double pz = getZ() + vz * distance;
                     float factor = 1 - distance / (float) maxDistance;
-                    if (level().random.nextBoolean()) {
-                        int amount = level().random.nextInt(5);
+                    if (level().getRandom().nextBoolean()) {
+                        int amount = level().getRandom().nextInt(5);
                         while (amount-- > 0) {
                             double velX = vx * 0.075;
                             double velY = factor * 0.3 + 0.025;
                             double velZ = vz * 0.075;
-                            level().addParticle(ParticleTypes.CLOUD, px + level().random.nextFloat() * 2 - 1, getBoundingBox().minY + 0.1 + level().random.nextFloat() * 1.5, pz + level().random.nextFloat() * 2 - 1, velX, velY, velZ);
+                            level().addParticle(ParticleTypes.CLOUD, px + level().getRandom().nextFloat() * 2 - 1, getBoundingBox().minY + 0.1 + level().getRandom().nextFloat() * 1.5, pz + level().getRandom().nextFloat() * 2 - 1, velX, velY, velZ);
                         }
                     }
                 }
@@ -523,7 +526,7 @@ public class EntityWroughtnaut extends MowzieLLibraryEntity implements Enemy {
 
     @Nullable
     @Override
-    public SpawnGroupData finalizeSpawn(ServerLevelAccessor world, DifficultyInstance difficulty, MobSpawnType reason, @Nullable SpawnGroupData livingData) {
+    public SpawnGroupData finalizeSpawn(ServerLevelAccessor world, DifficultyInstance difficulty, EntitySpawnReason reason, @Nullable SpawnGroupData livingData) {
         setRestPos(blockPosition());
         return super.finalizeSpawn(world, difficulty, reason, livingData);
     }
@@ -576,21 +579,21 @@ public class EntityWroughtnaut extends MowzieLLibraryEntity implements Enemy {
     }
 
     @Override
-    public void addAdditionalSaveData(@NotNull CompoundTag compound) {
-        super.addAdditionalSaveData(compound);
+    public void addAdditionalSaveData(@NotNull ValueOutput output) {
+        super.addAdditionalSaveData(output);
         Optional<BlockPos> restPos = getRestPos();
-        restPos.ifPresent(pos -> compound.put("restPos", NbtUtils.writeBlockPos(pos)));
-        compound.putBoolean("active", isActive());
-        compound.putBoolean("alwaysActive", isAlwaysActive());
+        restPos.ifPresent(pos -> output.store("restPos", BlockPos.CODEC, pos));
+        output.putBoolean("active", isActive());
+        output.putBoolean("alwaysActive", isAlwaysActive());
     }
 
     @Override
-    public void readAdditionalSaveData(@NotNull CompoundTag compound) {
-        super.readAdditionalSaveData(compound);
-        NbtUtils.readBlockPos(compound, "restPos").ifPresent(this::setRestPos);
-        setActive(compound.getBoolean("active"));
+    public void readAdditionalSaveData(@NotNull ValueInput input) {
+        super.readAdditionalSaveData(input);
+        input.read("restPos", BlockPos.CODEC).ifPresent(this::setRestPos);
+        setActive(input.getBooleanOr("active", false));
         active = isActive();
-        setAlwaysActive(compound.getBoolean("alwaysActive"));
+        setAlwaysActive(input.getBooleanOr("alwaysActive", false));
     }
 
     @Override
@@ -604,11 +607,6 @@ public class EntityWroughtnaut extends MowzieLLibraryEntity implements Enemy {
     @Override
     public Animation[] getAnimations() {
         return ANIMATIONS;
-    }
-
-    @Override
-    protected ResourceKey<LootTable> getDefaultLootTable() {
-        return LootTableHandler.FERROUS_WROUGHTNAUT;
     }
 
     @Override

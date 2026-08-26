@@ -11,14 +11,14 @@ import net.minecraft.core.particles.ParticleType;
 import net.minecraft.network.RegistryFriendlyByteBuf;
 import net.minecraft.network.codec.ByteBufCodecs;
 import net.minecraft.network.codec.StreamCodec;
+import net.minecraft.util.RandomSource;
 import net.minecraft.world.level.Level;
 import net.minecraft.world.phys.Vec3;
-import net.neoforged.neoforge.network.codec.NeoForgeStreamCodecs;
 import org.jetbrains.annotations.NotNull;
 
 import java.util.Arrays;
 
-public class ParticleVanillaCloudExtended extends TextureSheetParticle {
+public class ParticleVanillaCloudExtended extends SingleQuadParticle {
     private final SpriteSet animatedSprite;
 
     private final float oSize;
@@ -30,7 +30,7 @@ public class ParticleVanillaCloudExtended extends TextureSheetParticle {
     private final Vec3[] destination;
 
     protected ParticleVanillaCloudExtended(ClientLevel worldIn, SpriteSet animatedSprite, double xCoordIn, double yCoordIn, double zCoordIn, double motionX, double motionY, double motionZ, double scale, double r, double g, double b, double drag, double duration, Vec3[] destination) {
-        super(worldIn, xCoordIn, yCoordIn, zCoordIn, 0.0D, 0.0D, 0.0D);
+        super(worldIn, xCoordIn, yCoordIn, zCoordIn, 0.0D, 0.0D, 0.0D, animatedSprite.first());
         this.xd *= 0.10000000149011612D;
         this.yd *= 0.10000000149011612D;
         this.zd *= 0.10000000149011612D;
@@ -55,8 +55,16 @@ public class ParticleVanillaCloudExtended extends TextureSheetParticle {
     }
 
     @Override
-    public ParticleRenderType getRenderType() {
-        return ParticleRenderType.PARTICLE_SHEET_TRANSLUCENT;
+    public ParticleRenderType getGroup() {
+        return ParticleRenderType.SINGLE_QUADS;
+    }
+
+    // This particle only used the vanilla translucent particle-sheet render type (with normal depth testing),
+    // which maps directly onto the built-in SingleQuadParticle.Layer.TRANSLUCENT - no MMRenderType dependency
+    // needed here (unlike the other particles in this package that relied on a custom no-depth-test layer).
+    @Override
+    public SingleQuadParticle.Layer getLayer() {
+        return SingleQuadParticle.Layer.TRANSLUCENT;
     }
 
     @Override
@@ -104,7 +112,7 @@ public class ParticleVanillaCloudExtended extends TextureSheetParticle {
         }
 
         @Override
-        public Particle createParticle(Data typeIn, @NotNull ClientLevel worldIn, double x, double y, double z, double xSpeed, double ySpeed, double zSpeed) {
+        public Particle createParticle(Data typeIn, @NotNull ClientLevel worldIn, double x, double y, double z, double xSpeed, double ySpeed, double zSpeed, RandomSource random) {
             ParticleVanillaCloudExtended particle = new ParticleVanillaCloudExtended(worldIn, spriteSet, x, y, z, xSpeed, ySpeed, zSpeed, typeIn.scale(), typeIn.red(), typeIn.green(), typeIn.blue(), typeIn.airDrag(), typeIn.duration(), typeIn.destinations());
             particle.setColor(typeIn.red(), typeIn.green(), typeIn.blue());
             return particle;
@@ -123,7 +131,7 @@ public class ParticleVanillaCloudExtended extends TextureSheetParticle {
                 ).apply(instance, ParticleVanillaCloudExtended.Data::new)
         );
 
-        public static final StreamCodec<RegistryFriendlyByteBuf, ParticleVanillaCloudExtended.Data> STREAM_CODEC = NeoForgeStreamCodecs.composite(
+        public static final StreamCodec<RegistryFriendlyByteBuf, ParticleVanillaCloudExtended.Data> STREAM_CODEC = StreamCodec.composite(
                 ByteBufCodecs.FLOAT, ParticleVanillaCloudExtended.Data::red,
                 ByteBufCodecs.FLOAT, ParticleVanillaCloudExtended.Data::green,
                 ByteBufCodecs.FLOAT, ParticleVanillaCloudExtended.Data::blue,

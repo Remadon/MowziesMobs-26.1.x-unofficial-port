@@ -7,9 +7,8 @@ import com.mojang.blaze3d.vertex.PoseStack;
 import com.mojang.blaze3d.vertex.VertexConsumer;
 import it.unimi.dsi.fastutil.objects.ObjectArrayList;
 import it.unimi.dsi.fastutil.objects.ObjectList;
-import net.minecraft.client.model.Model;
 import net.minecraft.core.Direction;
-import net.minecraft.util.FastColor;
+import net.minecraft.util.ARGB;
 import net.minecraft.util.Mth;
 import net.minecraft.world.entity.Entity;
 import net.minecraft.world.phys.Vec3;
@@ -32,7 +31,7 @@ public class AdvancedModelRenderer extends BasicModelRenderer {
     public float scaleX = 1.0F, scaleY = 1.0F, scaleZ = 1.0F;
     public float opacity = 1;
     public boolean scaleChildren;
-    private final Model model;
+    private final BasicModelBase model;
     private AdvancedModelRenderer parent;
     private boolean doubleSided = true;
     private boolean hasLighting = true;
@@ -280,11 +279,11 @@ public class AdvancedModelRenderer extends BasicModelRenderer {
                 if (!isHidden) {
                     if (opacity < 1) {
                         // Turn the 0 - 255 int values into 0 - 1 float values to calculate the opacity impact (only opacity value of 0 - 1 matters)
-                        float alpha = (FastColor.ARGB32.alpha(color) / 255f) * opacity;
-                        float red = FastColor.ARGB32.red(color) / 255f;
-                        float green = FastColor.ARGB32.green(color) / 255f;
-                        float blue = FastColor.ARGB32.blue(color) / 255f;
-                        color = FastColor.ARGB32.colorFromFloat(alpha, red, green, blue);
+                        float alpha = (ARGB.alpha(color) / 255f) * opacity;
+                        float red = ARGB.red(color) / 255f;
+                        float green = ARGB.green(color) / 255f;
+                        float blue = ARGB.blue(color) / 255f;
+                        color = ARGB.colorFromFloat(alpha, red, green, blue);
                     }
 
                     this.doRender(matrixStackIn.last(), bufferIn, packedLightIn, packedOverlayIn, color);

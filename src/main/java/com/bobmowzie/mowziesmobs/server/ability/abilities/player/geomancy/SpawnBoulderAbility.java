@@ -28,7 +28,7 @@ import net.minecraft.world.phys.HitResult;
 import net.minecraft.world.phys.Vec3;
 import net.neoforged.neoforge.client.event.RenderFrameEvent;
 import net.neoforged.neoforge.event.entity.player.PlayerInteractEvent;
-import software.bernie.geckolib.animation.Animation;
+import com.geckolib.animation.object.LoopType;
 
 public class SpawnBoulderAbility extends PlayerAbility {
     private static final int MAX_CHARGE = 60;
@@ -70,7 +70,7 @@ public class SpawnBoulderAbility extends PlayerAbility {
         super.start();
         boulderSize = EntityGeomancyBase.GeomancyTier.SMALL;
         if (getLevel().isClientSide()) {
-            playAnimation("spawn_boulder_start", Animation.LoopType.DEFAULT, true, false);
+            playAnimation("spawn_boulder_start", LoopType.DEFAULT, true, false);
             if (getUser().getUsedItemHand() == InteractionHand.MAIN_HAND) {
                 heldItemMainHandVisualOverride = getUser().getUseItem();
             }
@@ -103,10 +103,10 @@ public class SpawnBoulderAbility extends PlayerAbility {
         super.tickUsing();
         if (getCurrentSection().sectionType == AbilitySection.AbilitySectionType.STARTUP) {
             spawnBoulderCharge++;
-            if (spawnBoulderCharge > 2) getUser().addEffect(new MobEffectInstance(MobEffects.MOVEMENT_SLOWDOWN, 3, 0, false, false));
-            if (spawnBoulderCharge == 1 && getUser().level().isClientSide) MMCommon.PROXY.playBoulderChargeSound(getUser());
+            if (spawnBoulderCharge > 2) getUser().addEffect(new MobEffectInstance(MobEffects.SLOWNESS, 3, 0, false, false));
+            if (spawnBoulderCharge == 1 && getUser().level().isClientSide()) MMCommon.PROXY.playBoulderChargeSound(getUser());
             if (spawnBoulderCharge == 45) {
-                if (getUser().level().isClientSide) {
+                if (getUser().level().isClientSide()) {
                     AdvancedParticleBase.spawnParticle(getUser().level(), ParticleHandler.RING2, (float) getUser().getX(), (float) getUser().getY() + getUser().getBbHeight() / 2f, (float) getUser().getZ(), 0, 0, 0, true, 0, 0, 0, 0, 3.5F, 0.83f, 1, 0.39f, 1, 1, 20, true, true, new ParticleComponent[]{
                             new ParticleComponent.PropertyControl(ParticleComponent.PropertyControl.EnumParticleProperty.ALPHA, ParticleComponent.KeyTrack.startAndEnd(0.7f, 0f), false),
                             new ParticleComponent.PropertyControl(ParticleComponent.PropertyControl.EnumParticleProperty.SCALE, ParticleComponent.KeyTrack.startAndEnd(0, 40f), false)
@@ -130,7 +130,7 @@ public class SpawnBoulderAbility extends PlayerAbility {
     @Override
     protected void beginSection(AbilitySection section) {
         if (section.sectionType == AbilitySection.AbilitySectionType.STARTUP && section != NO_CHARGE_SECTION) {
-            if (getUser().level().isClientSide) {
+            if (getUser().level().isClientSide()) {
                 float scale = 5;
                 if (section == MEDIUM_CHARGE_SECTION) scale = 8;
                 else if (section == LARGE_CHARGE_SECTION) scale = 12;
@@ -157,15 +157,15 @@ public class SpawnBoulderAbility extends PlayerAbility {
 
     private void spawnBoulder() {
         if (spawnBoulderCharge <= 2) {
-            playAnimation("spawn_boulder_instant", Animation.LoopType.DEFAULT, true, false);
+            playAnimation("spawn_boulder_instant", LoopType.DEFAULT, true, false);
         }
         else {
-            playAnimation("spawn_boulder_end", Animation.LoopType.DEFAULT, true, false);
+            playAnimation("spawn_boulder_end", LoopType.DEFAULT, true, false);
         }
 
         EntityBoulderProjectile boulder = new EntityBoulderProjectile(EntityHandler.BOULDER_PROJECTILE.get(), getUser().level(), getUser(), spawnBoulderBlock, spawnBoulderPos, getBoulderSize());
         boulder.setPos(spawnBoulderPos.getX() + 0.5F, spawnBoulderPos.getY() + 2, spawnBoulderPos.getZ() + 0.5F);
-        if (!getUser().level().isClientSide && boulder.checkCanSpawn()) {
+        if (!getUser().level().isClientSide() && boulder.checkCanSpawn()) {
             getUser().level().addFreshEntity(boulder);
         }
 

@@ -5,25 +5,24 @@ import com.bobmowzie.mowziesmobs.client.particle.ParticleRibbon;
 import com.bobmowzie.mowziesmobs.client.particle.types.AdvancedParticleType;
 import com.bobmowzie.mowziesmobs.client.render.MMRenderType;
 import com.mojang.blaze3d.vertex.PoseStack;
-import com.mojang.blaze3d.vertex.VertexConsumer;
 import com.mojang.math.Axis;
 import net.minecraft.client.Camera;
 import net.minecraft.client.Minecraft;
 import net.minecraft.client.multiplayer.ClientLevel;
 import net.minecraft.client.particle.*;
-import net.minecraft.client.renderer.texture.TextureAtlasSprite;
+import net.minecraft.client.renderer.state.level.QuadParticleRenderState;
 import net.minecraft.core.Holder;
 import net.minecraft.core.particles.ParticleType;
 import net.minecraft.util.Mth;
+import net.minecraft.util.RandomSource;
 import net.minecraft.world.level.Level;
-import net.minecraft.world.phys.AABB;
 import net.minecraft.world.phys.Vec3;
 import org.jetbrains.annotations.NotNull;
 import org.joml.Quaternionf;
 import org.joml.Vector3f;
 import org.joml.Vector4f;
 
-public class AdvancedParticleBase extends TextureSheetParticle {
+public class AdvancedParticleBase extends SingleQuadParticle {
     public boolean doRender;
 
     public float airDrag;
@@ -33,12 +32,21 @@ public class AdvancedParticleBase extends TextureSheetParticle {
     public ParticleRotation rotation;
     public boolean emissive;
     public double prevMotionX, prevMotionY, prevMotionZ;
-    public ParticleRenderType renderType = MMRenderType.PARTICLE_SHEET_TRANSLUCENT_NO_DEPTH;
+    // Replaces the old `ParticleRenderType renderType` field: rendering group selection (SINGLE_QUADS vs.
+    // ITEM_PICKUP/ELDER_GUARDIANS/NO_RENDER) and pipeline/blend-state selection (the old MMRenderType constant)
+    // are two separate hooks now (getGroup()/getLayer()) - see those overrides below.
+    public SingleQuadParticle.Layer layer = MMRenderType.PARTICLE_LAYER_TRANSLUCENT_NO_DEPTH;
 
     public ParticleComponent[] components;
 
     public ParticleRibbon ribbon;
 
+    // NOTE: "screen space" particles (HUD-anchored quads built from a raw PoseStack transform, see
+    // applyTransformToVerticesScreenSpace below and ParticleComponent.ScreenSpace) have no supported
+    // rendering path in this MC version - see the extract() override for details. The fields/flag are
+    // preserved so ParticleComponent.ScreenSpace and any dependent logic keep compiling and behaving the
+    // same way up until the point of rendering; the particle will simply not draw anything while
+    // isScreenSpace is true.
     public boolean isScreenSpace;
     public float screenX;
     public float screenY;
@@ -48,7 +56,7 @@ public class AdvancedParticleBase extends TextureSheetParticle {
     public float screenZo;
 
     protected AdvancedParticleBase(ClientLevel worldIn, double xCoordIn, double yCoordIn, double zCoordIn, double motionX, double motionY, double motionZ, ParticleRotation rotation, double scale, double r, double g, double b, double a, double drag, double duration, boolean emissive, boolean canCollide, ParticleComponent[] components) {
-        super(worldIn, xCoordIn, yCoordIn, zCoordIn, 0.0D, 0.0D, 0.0D);
+        super(worldIn, xCoordIn, yCoordIn, zCoordIn, 0.0D, 0.0D, 0.0D, null);
         this.xd = motionX;
         this.yd = motionY;
         this.zd = motionZ;
@@ -84,18 +92,32 @@ public class AdvancedParticleBase extends TextureSheetParticle {
     }
 
     @Override
-    public @NotNull ParticleRenderType getRenderType() {
-        return renderType;
+    public @NotNull ParticleRenderType getGroup() {
+        return ParticleRenderType.SINGLE_QUADS;
     }
 
     @Override
-    public void setSprite(TextureAtlasSprite sprite) {
+    public SingleQuadParticle.Layer getLayer() {
+        return layer;
+    }
+
+    // The old render() computed its quad half-size locally as `particleScale * 0.1f` without ever consulting
+    // getQuadSize(); the new extractRotatedQuad()/extract() pipeline reads the size through getQuadSize(), so
+    // that formula now has to live here instead. `particleScale` is refreshed at the top of extract() before
+    // this is consulted.
+    @Override
+    public float getQuadSize(float partialTicks) {
+        return this.particleScale * 0.1f;
+    }
+
+    @Override
+    public void setSprite(net.minecraft.client.renderer.texture.TextureAtlasSprite sprite) {
         super.setSprite(sprite);
     }
 
-    public int getLightColor(float partialTick)
+    public int getLightCoords(float partialTick)
     {
-        int i = super.getLightColor(partialTick);
+        int i = super.getLightCoords(partialTick);
         if (emissive) {
             int k = i >> 16 & 255;
             return 240 | k << 16;
@@ -159,23 +181,23 @@ public class AdvancedParticleBase extends TextureSheetParticle {
         this.zd *= airDrag;
     }
 
-    public AABB getRenderBoundingBox(float partialTicks) {
-        if (isScreenSpace) return AABB.INFINITE;
-        else return super.getRenderBoundingBox(partialTicks);
-    }
-
     public void setGravity(float gravity) {
         this.gravity = gravity;
     }
 
-    public float getQuadSize(float scaleFactor) {
-        return this.quadSize * scale;
-    }
-
+    // NB: Particle#render(VertexConsumer, Camera, float) and Particle#getRenderBoundingBox(float) no longer
+    // exist in this MC version. Frustum culling of particles is now done directly against the particle's
+    // (x, y, z) point (see QuadParticleGroup#extractRenderState), so there is no longer a bounding-box hook
+    // for "always visible" (e.g. screen-space) particles to override - this is consistent with screen-space
+    // particles not having a supported rendering path at all right now (see class-level note above).
+    //
+    // The quaternion-selection logic below (FaceCamera / EulerAngles / OrientVector) is preserved verbatim
+    // from the old render() override; only the final vertex-emission step changed, from manually writing 4
+    // vertices into a VertexConsumer to delegating to SingleQuadParticle#extractRotatedQuad, which performs
+    // the equivalent rotate+scale+translate math internally from the same (quaternion, position, quadSize)
+    // inputs.
     @Override
-    public void render(VertexConsumer buffer, Camera renderInfo, float partialTicks) {
-        if (isScreenSpace && !Minecraft.getInstance().options.getCameraType().isFirstPerson()) return;
-
+    public void extract(QuadParticleRenderState particleTypeRenderState, Camera renderInfo, float partialTicks) {
         alpha = prevAlpha + (alpha - prevAlpha) * partialTicks;
         rCol = prevRed + (red - prevRed) * partialTicks;
         gCol = prevGreen + (green - prevGreen) * partialTicks;
@@ -188,6 +210,10 @@ public class AdvancedParticleBase extends TextureSheetParticle {
         if (alpha < 0.01) alpha = 0.0f;
 
         if (!doRender) return;
+
+        // TODO: screen-space particles have no supported rendering path anymore (see class-level note) -
+        // skip drawing rather than emitting an incorrect world-space quad.
+        if (isScreenSpace) return;
 
         Quaternionf quaternion = new Quaternionf(0.0F, 0.0F, 0.0F, 1.0F);
         if (rotation instanceof ParticleRotation.FaceCamera faceCameraRot) {
@@ -222,44 +248,27 @@ public class AdvancedParticleBase extends TextureSheetParticle {
             quaternion.mul(quatX);
         }
 
-        Vector3f[] avector3f = new Vector3f[]{new Vector3f(-1.0F, -1.0F, 0.0F), new Vector3f(-1.0F, 1.0F, 0.0F), new Vector3f(1.0F, 1.0F, 0.0F), new Vector3f(1.0F, -1.0F, 0.0F)};
-        float f4 = particleScale * 0.1f;
+        Vec3 cameraPos = renderInfo.position();
+        float f = (float)(Mth.lerp(partialTicks, this.xo, this.x) - cameraPos.x());
+        float f1 = (float)(Mth.lerp(partialTicks, this.yo, this.y) - cameraPos.y());
+        float f2 = (float)(Mth.lerp(partialTicks, this.zo, this.z) - cameraPos.z());
 
-        if (isScreenSpace) {
-            applyTransformToVerticesScreenSpace(renderInfo, partialTicks, avector3f, quaternion, f4);
-        }
-        else {
-            applyTransformToVertices(renderInfo, partialTicks, avector3f, quaternion, f4);
-        }
+        this.extractRotatedQuad(particleTypeRenderState, quaternion, f, f1, f2, partialTicks);
 
-        float f7 = this.getU0();
-        float f8 = this.getU1();
-        float f5 = this.getV0();
-        float f6 = this.getV1();
-        int j = this.getLightColor(partialTicks);
-        buffer.addVertex(avector3f[0].x(), avector3f[0].y(), avector3f[0].z()).setUv(f8, f6).setColor(this.rCol, this.gCol, this.bCol, this.alpha).setLight(j);
-        buffer.addVertex(avector3f[1].x(), avector3f[1].y(), avector3f[1].z()).setUv(f8, f5).setColor(this.rCol, this.gCol, this.bCol, this.alpha).setLight(j);
-        buffer.addVertex(avector3f[2].x(), avector3f[2].y(), avector3f[2].z()).setUv(f7, f5).setColor(this.rCol, this.gCol, this.bCol, this.alpha).setLight(j);
-        buffer.addVertex(avector3f[3].x(), avector3f[3].y(), avector3f[3].z()).setUv(f7, f6).setColor(this.rCol, this.gCol, this.bCol, this.alpha).setLight(j);
-
+        // No VertexConsumer is available in the new extract()-based pipeline (see class-level note), so
+        // ParticleComponent#postRender is invoked with `null` for it. As of this port, no ParticleComponent
+        // implementation actually touches the buffer parameter, so this is safe; if a future component does,
+        // it will need a different hook, since raw vertex-buffer access is no longer available here.
         for (ParticleComponent component : components) {
-            component.postRender(this, buffer, renderInfo, partialTicks, j);
+            component.postRender(this, null, renderInfo, partialTicks, this.getLightCoords(partialTicks));
         }
     }
 
-    protected void applyTransformToVertices(Camera renderInfo, float partialTicks, Vector3f[] avector3f, Quaternionf quaternion, float scale) {
-        Vec3 vector3d = renderInfo.getPosition();
-        float f = (float)(Mth.lerp(partialTicks, this.xo, this.x) - vector3d.x());
-        float f1 = (float)(Mth.lerp(partialTicks, this.yo, this.y) - vector3d.y());
-        float f2 = (float)(Mth.lerp(partialTicks, this.zo, this.z) - vector3d.z());
-        for(int i = 0; i < 4; ++i) {
-            Vector3f vector3f = avector3f[i];
-            quaternion.transform(vector3f);
-            vector3f.mul(scale);
-            vector3f.add(f, f1, f2);
-        }
-    }
-
+    // Preserved for reference / potential future use: this was the old per-vertex screen-space transform used
+    // when isScreenSpace was true. It is no longer invoked from extract() because a PoseStack-based transform
+    // (which includes a (1,1,-1) reflection, not just rotation+uniform scale) cannot be represented by
+    // QuadParticleRenderState#add(), which only accepts a world position + rotation quaternion + uniform
+    // scale per quad. See the class-level note above.
     protected void applyTransformToVerticesScreenSpace(Camera renderInfo, float partialTicks, Vector3f[] avector3f, Quaternionf quaternion, float scale) {
         PoseStack posestack = new PoseStack();
         posestack.mulPose(renderInfo.rotation());
@@ -356,10 +365,11 @@ public class AdvancedParticleBase extends TextureSheetParticle {
         }
 
         @Override
-        public Particle createParticle(AdvancedParticleType typeIn, ClientLevel worldIn, double x, double y, double z, double xSpeed, double ySpeed, double zSpeed) {
+        public Particle createParticle(AdvancedParticleType typeIn, ClientLevel worldIn, double x, double y, double z, double xSpeed, double ySpeed, double zSpeed, RandomSource random) {
             AdvancedParticleBase particle = new AdvancedParticleBase(worldIn, x, y, z, xSpeed, ySpeed, zSpeed, typeIn.rotation(), typeIn.scale(), typeIn.red(), typeIn.green(), typeIn.blue(), typeIn.alpha(), typeIn.airDrag(), typeIn.duration(), typeIn.emissive(), typeIn.canCollide(), typeIn.components());
             particle.setColor(typeIn.red(), typeIn.green(), typeIn.blue());
-            particle.pickSprite(spriteSet);
+            particle.setAlpha(typeIn.alpha());
+            particle.setSprite(spriteSet.get(random));
             return particle;
         }
     }
@@ -379,13 +389,13 @@ public class AdvancedParticleBase extends TextureSheetParticle {
 
     public static void spawnAlwaysVisibleParticle(Level world, Holder<ParticleType<?>> particle, double distanceLimit, double x, double y, double z, double motionX, double motionY, double motionZ, ParticleRotation rotation, double scale, double red, double green, double blue, double alpha, double airDrag, double duration, boolean emissive, boolean canCollide, ParticleComponent[] components) {
         Camera camera = Minecraft.getInstance().gameRenderer.getMainCamera();
-        boolean overrideLimiter = camera.getPosition().distanceToSqr(x, y, z) < distanceLimit * distanceLimit;
+        boolean overrideLimiter = camera.position().distanceToSqr(x, y, z) < distanceLimit * distanceLimit;
         world.addAlwaysVisibleParticle(new AdvancedParticleType(particle, rotation, components, (float) red, (float) green, (float) blue, (float) alpha, (float) scale, (float) duration, (float) airDrag, emissive, canCollide), overrideLimiter, x, y, z, motionX, motionY, motionZ);
     }
 
     public static void spawnAlwaysVisibleParticle(Level world, Holder<ParticleType<?>> particle, double distanceLimit, double x, double y, double z, double motionX, double motionY, double motionZ, boolean faceCamera, double yaw, double pitch, double roll, double faceCameraAngle, double scale, double red, double green, double blue, double alpha, double airDrag, double duration, boolean emissive, boolean canCollide, ParticleComponent[] components) {
         Camera camera = Minecraft.getInstance().gameRenderer.getMainCamera();
-        boolean overrideLimiter = camera.getPosition().distanceToSqr(x, y, z) < distanceLimit * distanceLimit;
+        boolean overrideLimiter = camera.position().distanceToSqr(x, y, z) < distanceLimit * distanceLimit;
         ParticleRotation rotation = faceCamera ? new ParticleRotation.FaceCamera((float) faceCameraAngle) : new ParticleRotation.EulerAngles((float)yaw, (float)pitch, (float)roll);
         world.addAlwaysVisibleParticle(new AdvancedParticleType(particle, rotation, components, (float) red, (float) green, (float) blue, (float) alpha, (float) scale, (float) duration, (float) airDrag, emissive, canCollide), overrideLimiter, x, y, z, motionX, motionY, motionZ);
     }

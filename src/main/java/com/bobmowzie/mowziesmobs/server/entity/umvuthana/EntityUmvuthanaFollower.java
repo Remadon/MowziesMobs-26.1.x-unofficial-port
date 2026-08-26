@@ -10,6 +10,8 @@ import net.minecraft.world.entity.EntityType;
 import net.minecraft.world.entity.LivingEntity;
 import net.minecraft.world.item.ItemStack;
 import net.minecraft.world.level.Level;
+import net.minecraft.world.level.storage.ValueInput;
+import net.minecraft.world.level.storage.ValueOutput;
 import net.minecraft.world.phys.HitResult;
 import net.minecraft.world.phys.Vec3;
 import org.jetbrains.annotations.NotNull;
@@ -21,7 +23,7 @@ import java.util.UUID;
 public abstract class EntityUmvuthanaFollower<L extends LivingEntity> extends EntityUmvuthana {
     protected static final Optional<UUID> ABSENT_LEADER = Optional.empty();
 
-    private static final EntityDataAccessor<Optional<UUID>> LEADER = SynchedEntityData.defineId(EntityUmvuthanaFollower.class, EntityDataSerializers.OPTIONAL_UUID);
+    private static final EntityDataAccessor<Optional<UUID>> LEADER = SynchedEntityData.defineId(EntityUmvuthanaFollower.class, com.bobmowzie.mowziesmobs.server.entity.EntityHandler.OPTIONAL_UUID.get());
 
     private final Class<L> leaderClass;
 
@@ -63,7 +65,7 @@ public abstract class EntityUmvuthanaFollower<L extends LivingEntity> extends En
     }
 
     @Override
-    public ItemStack getPickedResult(HitResult target) {
+    public ItemStack getPickResult() {
         return new ItemStack(ItemHandler.UMVUTHANA_SPAWN_EGG.get());
     }
 
@@ -148,18 +150,18 @@ public abstract class EntityUmvuthanaFollower<L extends LivingEntity> extends En
     }
 
     @Override
-    public void addAdditionalSaveData(CompoundTag compound) {
-        super.addAdditionalSaveData(compound);
+    public void addAdditionalSaveData(ValueOutput output) {
+        super.addAdditionalSaveData(output);
         Optional<UUID> leader = getLeaderUUID();
         if (leader.isPresent()) {
-            compound.putString("leaderUUID", leader.get().toString());
+            output.putString("leaderUUID", leader.get().toString());
         }
     }
 
     @Override
-    public void readAdditionalSaveData(CompoundTag compound) {
-        super.readAdditionalSaveData(compound);
-        String uuid = compound.getString("leaderUUID");
+    public void readAdditionalSaveData(ValueInput input) {
+        super.readAdditionalSaveData(input);
+        String uuid = input.getStringOr("leaderUUID", "");
         if (uuid.isEmpty()) {
             setLeaderUUID(ABSENT_LEADER);
         } else {

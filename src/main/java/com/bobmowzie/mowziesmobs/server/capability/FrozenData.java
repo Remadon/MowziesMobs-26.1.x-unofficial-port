@@ -6,10 +6,9 @@ import com.bobmowzie.mowziesmobs.server.entity.EntityHandler;
 import com.bobmowzie.mowziesmobs.server.entity.frostmaw.EntityFrozenController;
 import com.bobmowzie.mowziesmobs.server.potion.EffectHandler;
 import com.bobmowzie.mowziesmobs.server.sound.MMSounds;
-import net.minecraft.core.HolderLookup;
+import net.minecraft.core.UUIDUtil;
 import net.minecraft.core.particles.BlockParticleOption;
 import net.minecraft.core.particles.ParticleTypes;
-import net.minecraft.nbt.CompoundTag;
 import net.minecraft.util.Mth;
 import net.minecraft.world.effect.MobEffectInstance;
 import net.minecraft.world.effect.MobEffects;
@@ -18,13 +17,14 @@ import net.minecraft.world.entity.LivingEntity;
 import net.minecraft.world.entity.Mob;
 import net.minecraft.world.entity.player.Player;
 import net.minecraft.world.level.block.Blocks;
+import net.minecraft.world.level.storage.ValueInput;
+import net.minecraft.world.level.storage.ValueOutput;
 import net.minecraft.world.phys.Vec3;
-import net.neoforged.neoforge.common.util.INBTSerializable;
-import org.jetbrains.annotations.NotNull;
+import net.neoforged.neoforge.common.util.ValueIOSerializable;
 
 import java.util.UUID;
 
-public class FrozenData implements INBTSerializable<CompoundTag> {
+public class FrozenData implements ValueIOSerializable {
     public static int MAX_FREEZE_DECAY_DELAY = 10;
 
     public boolean frozen;
@@ -154,7 +154,7 @@ public class FrozenData implements INBTSerializable<CompoundTag> {
     }
 
     public void addFreezeProgress(LivingEntity entity, float amount) {
-        if (!entity.level().isClientSide && !entity.hasEffect(EffectHandler.FROZEN)) {
+        if (!entity.level().isClientSide() && !entity.hasEffect(EffectHandler.FROZEN)) {
             freezeProgress += amount;
             freezeDecayDelay = MAX_FREEZE_DECAY_DELAY;
         }
@@ -164,7 +164,10 @@ public class FrozenData implements INBTSerializable<CompoundTag> {
         if (entity != null) {
             frozen = true;
             frozenController = new EntityFrozenController(EntityHandler.FROZEN_CONTROLLER.get(), entity.level());
-            frozenController.absMoveTo(entity.getX(), entity.getY(), entity.getZ(), entity.getYRot(), entity.getXRot());
+            // PORTING NOTE (1.21.1 -> 26.1.2): Entity#absMoveTo(double,double,double,float,float) was renamed to
+            // snapTo(...) (confirmed against real 26.1.2 Entity source - same overload shape survives under the
+            // new name).
+            frozenController.snapTo(entity.getX(), entity.getY(), entity.getZ(), entity.getYRot(), entity.getXRot());
             entity.level().addFreshEntity(frozenController);
             frozenController.setYBodyRot(entity.yBodyRot);
             frozenYaw = entity.getYRot();
@@ -174,7 +177,9 @@ public class FrozenData implements INBTSerializable<CompoundTag> {
             frozenWalkAnimPosition = entity.walkAnimation.position();
             frozenRenderYawOffset = entity.yBodyRot;
             frozenSwingProgress = entity.attackAnim;
-            entity.startRiding(frozenController, true);
+            // PORTING NOTE (1.21.1 -> 26.1.2): Entity#startRiding(Entity, boolean force) 2-arg overload is gone -
+            // see EntityAIGrottolFindMinecart.java for the same fix (3-arg force=true, sendEventAndTriggers=true).
+            entity.startRiding(frozenController, true, true);
             entity.stopUsingItem();
 
             if (entity instanceof Mob) {
@@ -184,7 +189,7 @@ public class FrozenData implements INBTSerializable<CompoundTag> {
                 mobEntity.setNoAi(true);
             }
 
-            if (entity.level().isClientSide) {
+            if (entity.level().isClientSide()) {
                 int particleCount = (int) (10 + 1 * entity.getBbHeight() * entity.getBbWidth() * entity.getBbWidth());
                 for (int i = 0; i < particleCount; i++) {
                     double snowX = entity.getX() + entity.getBbWidth() * entity.getRandom().nextFloat() - entity.getBbWidth() / 2;
@@ -211,7 +216,7 @@ public class FrozenData implements INBTSerializable<CompoundTag> {
                     frozenController.discard();
                 }
                 entity.playSound(MMSounds.ENTITY_FROSTMAW_FROZEN_CRASH.get(), 1, 0.5f);
-                if (entity.level().isClientSide) {
+                if (entity.level().isClientSide()) {
                     int particleCount = (int) (10 + 1 * entity.getBbHeight() * entity.getBbWidth() * entity.getBbWidth());
                     for (int i = 0; i < particleCount; i++) {
                         double particleX = entity.getX() + entity.getBbWidth() * entity.getRandom().nextFloat() - entity.getBbWidth() / 2;
@@ -241,7 +246,7 @@ public class FrozenData implements INBTSerializable<CompoundTag> {
             entity.addEffect(new MobEffectInstance(EffectHandler.FROZEN, 50, 0, false, false));
             freezeProgress = 1f;
         } else if (freezeProgress > 0) {
-            entity.addEffect(new MobEffectInstance(MobEffects.MOVEMENT_SLOWDOWN, 9, Mth.floor(freezeProgress * 5 + 1), false, false));
+            entity.addEffect(new MobEffectInstance(MobEffects.SLOWNESS, 9, Mth.floor(freezeProgress * 5 + 1), false, false));
         }
 
         if (frozenController == null) {
@@ -250,10 +255,10 @@ public class FrozenData implements INBTSerializable<CompoundTag> {
         }
 
         if (frozen) {
-            entity.addEffect(new MobEffectInstance(MobEffects.MOVEMENT_SLOWDOWN, 2, 50, false, false));
+            entity.addEffect(new MobEffectInstance(MobEffects.SLOWNESS, 2, 50, false, false));
             entity.setShiftKeyDown(false);
 
-            if (entity.level().isClientSide && entity.tickCount % 2 == 0) {
+            if (entity.level().isClientSide() && entity.tickCount % 2 == 0) {
                 double cloudX = entity.getX() + entity.getBbWidth() * entity.getRandom().nextFloat() - entity.getBbWidth() / 2;
                 double cloudZ = entity.getZ() + entity.getBbWidth() * entity.getRandom().nextFloat() - entity.getBbWidth() / 2;
                 double cloudY = entity.getY() + entity.getBbHeight() * entity.getRandom().nextFloat();
@@ -265,7 +270,7 @@ public class FrozenData implements INBTSerializable<CompoundTag> {
                 entity.level().addParticle(new ParticleSnowFlake.Data(40, false), snowX, snowY, snowZ, 0d, -0.01d, 0d);
             }
         } else {
-            if (!entity.level().isClientSide && getPrevFrozen()) {
+            if (!entity.level().isClientSide() && getPrevFrozen()) {
                 onUnfreeze(entity);
             }
         }
@@ -280,43 +285,38 @@ public class FrozenData implements INBTSerializable<CompoundTag> {
     }
 
     @Override
-    public CompoundTag serializeNBT(@NotNull HolderLookup.Provider lookup) {
-        CompoundTag compound = new CompoundTag();
-        compound.putFloat("freezeProgress", getFreezeProgress());
-        compound.putInt("freezeDecayDelay", getFreezeDecayDelay());
-        compound.putFloat("frozenWalkAnimSpeed", getFrozenWalkAnimSpeed());
-        compound.putFloat("frozenWalkAnimPosition", getFrozenWalkAnimPosition());
-        compound.putFloat("frozenRenderYawOffset", getFrozenRenderYawOffset());
-        compound.putFloat("frozenSwingProgress", getFrozenSwingProgress());
-        compound.putFloat("frozenPitch", getFrozenPitch());
-        compound.putFloat("frozenYaw", getFrozenYaw());
-        compound.putFloat("frozenYawHead", getFrozenYawHead());
-        compound.putBoolean("prevHasAI", prevHasAI());
+    public void serialize(ValueOutput output) {
+        output.putFloat("freezeProgress", getFreezeProgress());
+        output.putInt("freezeDecayDelay", getFreezeDecayDelay());
+        output.putFloat("frozenWalkAnimSpeed", getFrozenWalkAnimSpeed());
+        output.putFloat("frozenWalkAnimPosition", getFrozenWalkAnimPosition());
+        output.putFloat("frozenRenderYawOffset", getFrozenRenderYawOffset());
+        output.putFloat("frozenSwingProgress", getFrozenSwingProgress());
+        output.putFloat("frozenPitch", getFrozenPitch());
+        output.putFloat("frozenYaw", getFrozenYaw());
+        output.putFloat("frozenYawHead", getFrozenYawHead());
+        output.putBoolean("prevHasAI", prevHasAI());
         if (getPreAttackTarget() != null) {
-            compound.putUUID("prevAttackTarget", getPreAttackTarget());
+            output.store("prevAttackTarget", UUIDUtil.CODEC, getPreAttackTarget());
         }
-        compound.putBoolean("frozen", frozen);
-        compound.putBoolean("prevFrozen", prevFrozen);
-        return compound;
+        output.putBoolean("frozen", frozen);
+        output.putBoolean("prevFrozen", prevFrozen);
     }
 
     @Override
-    public void deserializeNBT(@NotNull HolderLookup.Provider lookup, CompoundTag compound) {
-        setFreezeProgress(compound.getFloat("freezeProgress"));
-        setFreezeDecayDelay(compound.getInt("freezeDecayDelay"));
-        setFrozenWalkAnimSpeed(compound.getFloat("frozenWalkAnimSpeed"));
-        setFrozenWalkAnimPosition(compound.getFloat("frozenWalkAnimPosition"));
-        setFrozenRenderYawOffset(compound.getFloat("frozenRenderYawOffset"));
-        setFrozenSwingProgress(compound.getFloat("frozenSwingProgress"));
-        setFrozenPitch(compound.getFloat("frozenPitch"));
-        setFrozenYaw(compound.getFloat("frozenYaw"));
-        setFrozenYawHead(compound.getFloat("frozenYawHead"));
-        setPrevHasAI(compound.getBoolean("prevHasAI"));
-        try {
-            setPreAttackTarget(compound.getUUID("prevAttackTarget"));
-        } catch (NullPointerException ignored) {
-        }
-        frozen = compound.getBoolean("frozen");
-        prevFrozen = compound.getBoolean("prevFrozen");
+    public void deserialize(ValueInput input) {
+        setFreezeProgress(input.getFloatOr("freezeProgress", 0f));
+        setFreezeDecayDelay(input.getIntOr("freezeDecayDelay", 0));
+        setFrozenWalkAnimSpeed(input.getFloatOr("frozenWalkAnimSpeed", 0f));
+        setFrozenWalkAnimPosition(input.getFloatOr("frozenWalkAnimPosition", 0f));
+        setFrozenRenderYawOffset(input.getFloatOr("frozenRenderYawOffset", 0f));
+        setFrozenSwingProgress(input.getFloatOr("frozenSwingProgress", 0f));
+        setFrozenPitch(input.getFloatOr("frozenPitch", 0f));
+        setFrozenYaw(input.getFloatOr("frozenYaw", 0f));
+        setFrozenYawHead(input.getFloatOr("frozenYawHead", 0f));
+        setPrevHasAI(input.getBooleanOr("prevHasAI", true));
+        setPreAttackTarget(input.read("prevAttackTarget", UUIDUtil.CODEC).orElse(null));
+        frozen = input.getBooleanOr("frozen", false);
+        prevFrozen = input.getBooleanOr("prevFrozen", false);
     }
 }

@@ -132,7 +132,7 @@ public class ChainBuffer {
      * @param boxes the box array
      */
     public void applyChainSwingBuffer(ModelPart... boxes) {
-        float rotateAmount = 0.01745329251F * ClientUtils.interpolate(this.prevYawVariation, this.yawVariation, Minecraft.getInstance().getTimer().getGameTimeDeltaPartialTick(false)) / boxes.length;
+        float rotateAmount = 0.01745329251F * ClientUtils.interpolate(this.prevYawVariation, this.yawVariation, Minecraft.getInstance().getDeltaTracker().getGameTimeDeltaPartialTick(false)) / boxes.length;
         for (ModelPart box : boxes) {
             box.yRot += rotateAmount;
         }
@@ -144,7 +144,7 @@ public class ChainBuffer {
      * @param boxes the box array
      */
     public void applyChainWaveBuffer(ModelPart... boxes) {
-        float rotateAmount = 0.01745329251F * ClientUtils.interpolate(this.prevPitchVariation, this.pitchVariation, Minecraft.getInstance().getTimer().getGameTimeDeltaPartialTick(false)) / boxes.length;
+        float rotateAmount = 0.01745329251F * ClientUtils.interpolate(this.prevPitchVariation, this.pitchVariation, Minecraft.getInstance().getDeltaTracker().getGameTimeDeltaPartialTick(false)) / boxes.length;
         for (ModelPart box : boxes) {
             box.xRot += rotateAmount;
         }

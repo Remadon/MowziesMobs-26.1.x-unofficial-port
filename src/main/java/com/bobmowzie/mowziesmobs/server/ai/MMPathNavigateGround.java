@@ -139,7 +139,10 @@ public class MMPathNavigateGround extends GroundPathNavigation {
                     PathType in = this.nodeEvaluator.getPathType(mob, BlockPos.containing(x, y0, z));
                     float priority = this.mob.getPathfindingMalus(in);
                     if (priority < 0.0F || priority >= 8.0F) return false;
-                    if (in == PathType.DAMAGE_FIRE || in == PathType.DANGER_FIRE || in == PathType.DAMAGE_OTHER) return false;
+                    // PORTING NOTE (1.21.1 -> 26.1.2): PathType.DAMAGE_FIRE/DANGER_FIRE/DAMAGE_OTHER were
+                    // consolidated - confirmed against real 26.1.2 WalkNodeEvaluator, which now produces FIRE
+                    // (was DAMAGE_FIRE), FIRE_IN_NEIGHBOR (was DANGER_FIRE), and DAMAGING (was DAMAGE_OTHER).
+                    if (in == PathType.FIRE || in == PathType.FIRE_IN_NEIGHBOR || in == PathType.DAMAGING) return false;
                 }
             }
         } while (t <= max_t);

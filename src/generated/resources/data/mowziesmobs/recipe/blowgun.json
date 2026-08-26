@@ -2,12 +2,8 @@
   "type": "minecraft:crafting_shaped",
   "category": "equipment",
   "key": {
-    "B": {
-      "item": "minecraft:bamboo"
-    },
-    "S": {
-      "tag": "c:strings"
-    }
+    "B": "minecraft:bamboo",
+    "S": "#c:strings"
   },
   "pattern": [
     " B ",
@@ -15,7 +11,6 @@
     " B "
   ],
   "result": {
-    "count": 1,
     "id": "mowziesmobs:blowgun"
   }
 }

@@ -2,18 +2,19 @@ package com.bobmowzie.mowziesmobs.client.particle;
 
 import com.bobmowzie.mowziesmobs.client.model.tools.MathUtils;
 import com.bobmowzie.mowziesmobs.client.render.MMRenderType;
-import com.mojang.blaze3d.vertex.VertexConsumer;
 import com.mojang.serialization.Codec;
 import com.mojang.serialization.MapCodec;
 import com.mojang.serialization.codecs.RecordCodecBuilder;
 import net.minecraft.client.Camera;
 import net.minecraft.client.multiplayer.ClientLevel;
 import net.minecraft.client.particle.*;
+import net.minecraft.client.renderer.state.level.QuadParticleRenderState;
 import net.minecraft.core.particles.ParticleOptions;
 import net.minecraft.core.particles.ParticleType;
 import net.minecraft.network.RegistryFriendlyByteBuf;
 import net.minecraft.network.codec.ByteBufCodecs;
 import net.minecraft.network.codec.StreamCodec;
+import net.minecraft.util.RandomSource;
 import org.jetbrains.annotations.NotNull;
 import org.joml.AxisAngle4f;
 import org.joml.Quaternionf;
@@ -22,13 +23,13 @@ import org.joml.Vector3f;
 /**
  * Created by BobMowzie on 6/2/2017.
  */
-public class ParticleSnowFlake extends TextureSheetParticle {
+public class ParticleSnowFlake extends SingleQuadParticle {
     private int swirlTick;
     private final float spread;
     boolean swirls;
 
     public ParticleSnowFlake(ClientLevel world, double x, double y, double z, double vX, double vY, double vZ, double duration, boolean swirls) {
-        super(world, x, y, z);
+        super(world, x, y, z, vX, vY, vZ, null);
         setSize(1, 1);
         xd = vX;
         yd = vY;
@@ -50,8 +51,14 @@ public class ParticleSnowFlake extends TextureSheetParticle {
     }
 
     @Override
-    public ParticleRenderType getRenderType() {
-        return MMRenderType.PARTICLE_SHEET_TRANSLUCENT_NO_DEPTH;
+    public ParticleRenderType getGroup() {
+        return ParticleRenderType.SINGLE_QUADS;
+    }
+
+    // TODO(out of scope): see MMRenderType.PARTICLE_LAYER_TRANSLUCENT_NO_DEPTH note in ParticleSparkle.java.
+    @Override
+    public SingleQuadParticle.Layer getLayer() {
+        return MMRenderType.PARTICLE_LAYER_TRANSLUCENT_NO_DEPTH;
     }
 
     @Override
@@ -81,12 +88,13 @@ public class ParticleSnowFlake extends TextureSheetParticle {
         swirlTick++;
     }
 
+    // NB: render(VertexConsumer, Camera, float) no longer exists - see ParticleSparkle.java for context.
     @Override
-    public void render(VertexConsumer buffer, Camera renderInfo, float partialTicks) {
+    public void extract(QuadParticleRenderState particleTypeRenderState, Camera renderInfo, float partialTicks) {
         float var = (age + partialTicks)/(float)lifetime;
         alpha = (float) (1 - Math.exp(10 * (var - 1)) - Math.pow(2000, -var));
         if (alpha < 0.01) alpha = 0.01f;
-        super.render(buffer, renderInfo, partialTicks);
+        super.extract(particleTypeRenderState, renderInfo, partialTicks);
     }
 
     public static final class Provider implements ParticleProvider<Data> {
@@ -97,9 +105,9 @@ public class ParticleSnowFlake extends TextureSheetParticle {
         }
 
         @Override
-        public Particle createParticle(Data typeIn, @NotNull ClientLevel worldIn, double x, double y, double z, double xSpeed, double ySpeed, double zSpeed) {
+        public Particle createParticle(Data typeIn, @NotNull ClientLevel worldIn, double x, double y, double z, double xSpeed, double ySpeed, double zSpeed, RandomSource random) {
             ParticleSnowFlake particle = new ParticleSnowFlake(worldIn, x, y, z, xSpeed, ySpeed, zSpeed, typeIn.duration(), typeIn.swirls());
-            particle.pickSprite(spriteSet);
+            particle.setSprite(spriteSet.get(random));
             return particle;
         }
     }

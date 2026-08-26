@@ -10,16 +10,22 @@ import net.minecraft.world.effect.MobEffects;
 import net.minecraft.world.entity.LivingEntity;
 import net.minecraft.world.entity.player.Player;
 import net.minecraft.world.item.*;
+import net.minecraft.world.item.component.TooltipDisplay;
 import net.minecraft.world.item.enchantment.Enchantment;
 import net.minecraft.world.item.enchantment.Enchantments;
 import net.minecraft.world.level.Level;
 import net.minecraft.world.level.block.state.BlockState;
 
-import java.util.List;
+import java.util.function.Consumer;
 
-public class ItemNagaFangDagger extends DiggerItem {
+public class ItemNagaFangDagger extends Item {
     public ItemNagaFangDagger(Item.Properties properties) {
-        super(Tiers.STONE, BlockTags.MINEABLE_WITH_HOE, properties);
+        // DiggerItem was removed upstream. Repair-by-ItemNagaFang is applied later in
+        // ItemHandler#modifyComponents (once all items are guaranteed to be registered) via the
+        // DataComponents.REPAIRABLE component, instead of overriding isValidRepairItem(ItemStack, ItemStack),
+        // which no longer exists. Not done here in the constructor since ItemHandler.NAGA_FANG's DeferredHolder
+        // is not guaranteed to be bound yet while items are still being constructed/registered.
+        super(properties.hoe(ToolMaterial.STONE, 0F, 0F));
     }
 
     public boolean canAttackBlock(BlockState state, Level level, BlockPos pos, Player player) {
@@ -45,24 +51,18 @@ public class ItemNagaFangDagger extends DiggerItem {
     }
 
     @Override
-    public boolean hurtEnemy(ItemStack stack, LivingEntity target, LivingEntity attacker) {
-        if (super.hurtEnemy(stack, target, attacker)) {
-            target.addEffect(new MobEffectInstance(MobEffects.POISON, ConfigHandler.COMMON.TOOLS_AND_ABILITIES.NAGA_FANG_DAGGER.poisonDuration.get(), 3, false, true));
-            return true;
-        }
-        return false;
+    public void hurtEnemy(ItemStack stack, LivingEntity target, LivingEntity attacker) {
+        super.hurtEnemy(stack, target, attacker);
+        target.addEffect(new MobEffectInstance(MobEffects.POISON, ConfigHandler.COMMON.TOOLS_AND_ABILITIES.NAGA_FANG_DAGGER.poisonDuration.get(), 3, false, true));
     }
 
-    @Override
-    public boolean isValidRepairItem(ItemStack toRepair, ItemStack repair) {
-        Item item = repair.getItem();
-        return item instanceof ItemNagaFang;
-    }
+    // isValidRepairItem(ItemStack, ItemStack) no longer exists as an override point - repair-by-ItemNagaFang is now
+    // set via DataComponents.REPAIRABLE in ItemHandler#modifyComponents.
 
     @Override
-    public void appendHoverText(ItemStack stack, TooltipContext context, List<Component> tooltip, TooltipFlag flagIn) {
-        super.appendHoverText(stack, context, tooltip, flagIn);
-        tooltip.add(Component.translatable(getDescriptionId() + ".text.0").setStyle(ItemHandler.TOOLTIP_STYLE));
-        tooltip.add(Component.translatable(getDescriptionId() + ".text.1").setStyle(ItemHandler.TOOLTIP_STYLE));
+    public void appendHoverText(ItemStack stack, TooltipContext context, TooltipDisplay display, Consumer<Component> tooltip, TooltipFlag flagIn) {
+        super.appendHoverText(stack, context, display, tooltip, flagIn);
+        tooltip.accept(Component.translatable(getDescriptionId() + ".text.0").setStyle(ItemHandler.TOOLTIP_STYLE));
+        tooltip.accept(Component.translatable(getDescriptionId() + ".text.1").setStyle(ItemHandler.TOOLTIP_STYLE));
     }
 }

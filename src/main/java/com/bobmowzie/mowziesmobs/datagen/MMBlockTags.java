@@ -4,16 +4,14 @@ import com.bobmowzie.mowziesmobs.MMCommon;
 import com.bobmowzie.mowziesmobs.server.block.BlockHandler;
 import net.minecraft.core.HolderLookup;
 import net.minecraft.data.PackOutput;
-import net.minecraft.resources.ResourceLocation;
+import net.minecraft.resources.Identifier;
 import net.minecraft.tags.BlockTags;
 import net.minecraft.tags.TagKey;
 import net.minecraft.world.level.block.Block;
 import net.minecraft.world.level.block.Blocks;
 import net.neoforged.neoforge.common.Tags;
 import net.neoforged.neoforge.common.data.BlockTagsProvider;
-import net.neoforged.neoforge.common.data.ExistingFileHelper;
 import org.jetbrains.annotations.NotNull;
-import org.jetbrains.annotations.Nullable;
 
 import java.util.concurrent.CompletableFuture;
 
@@ -22,8 +20,8 @@ public class MMBlockTags extends BlockTagsProvider {
     public static final TagKey<Block> CAN_GROTTOL_DIG = key("can_grottol_dig");
     public static final TagKey<Block> GEOMANCY_TUNNELABLE = key("geomancy_tunnelable");
 
-    public MMBlockTags(PackOutput output, CompletableFuture<HolderLookup.Provider> lookupProvider, @Nullable ExistingFileHelper existingFileHelper) {
-        super(output, lookupProvider, MMCommon.MODID, existingFileHelper);
+    public MMBlockTags(PackOutput output, CompletableFuture<HolderLookup.Provider> lookupProvider) {
+        super(output, lookupProvider, MMCommon.MODID);
     }
 
     @Override
@@ -77,7 +75,10 @@ public class MMBlockTags extends BlockTagsProvider {
                 .add(BlockHandler.RAKED_SAND.value())
                 .add(BlockHandler.RED_RAKED_SAND.value());
 
-        tag(BlockTags.BAMBOO_PLANTABLE_ON)
+        // PORTING NOTE (1.21.1 -> 26.1.2): BlockTags.BAMBOO_PLANTABLE_ON was renamed to SUPPORTS_BAMBOO (confirmed
+        // by both the real 26.1.2 BlockTags source and BambooStalkBlock/BambooSaplingBlock, which now read
+        // BlockTags.SUPPORTS_BAMBOO where they used to read bamboo_plantable_on) - same semantics, new name.
+        tag(BlockTags.SUPPORTS_BAMBOO)
                 .add(BlockHandler.RAKED_SAND.value())
                 .add(BlockHandler.RED_RAKED_SAND.value());
 
@@ -203,6 +204,6 @@ public class MMBlockTags extends BlockTagsProvider {
     }
 
     private static TagKey<Block> key(String path) {
-        return BlockTags.create(ResourceLocation.fromNamespaceAndPath(MMCommon.MODID, path));
+        return BlockTags.create(Identifier.fromNamespaceAndPath(MMCommon.MODID, path));
     }
 }

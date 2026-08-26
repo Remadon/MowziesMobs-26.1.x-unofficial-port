@@ -11,11 +11,14 @@ import net.neoforged.neoforge.event.entity.living.LivingEvent;
 import net.neoforged.neoforge.event.entity.living.LivingFallEvent;
 import net.neoforged.neoforge.event.entity.player.AttackEntityEvent;
 import net.neoforged.neoforge.event.entity.player.PlayerInteractEvent;
-import software.bernie.geckolib.animatable.GeoEntity;
-import software.bernie.geckolib.animation.Animation;
-import software.bernie.geckolib.animation.AnimationState;
-import software.bernie.geckolib.animation.PlayState;
-import software.bernie.geckolib.animation.RawAnimation;
+import com.geckolib.animatable.GeoEntity;
+import com.geckolib.animatable.client.GeoRenderProvider;
+import com.geckolib.animatable.manager.AnimatableManager;
+import com.geckolib.animation.object.LoopType;
+import com.geckolib.animation.state.AnimationTest;
+import com.geckolib.animation.object.PlayState;
+import com.geckolib.animation.RawAnimation;
+import com.geckolib.renderer.base.GeoRenderState;
 
 public class PlayerAbility extends Ability<Player> {
     protected RawAnimation activeFirstPersonAnimation;
@@ -36,7 +39,7 @@ public class PlayerAbility extends Ability<Player> {
 
     public PlayerAbility(AbilityType<Player, ? extends Ability<?>> abilityType, Player user, AbilitySection[] sectionTrack, int cooldownMax) {
         super(abilityType, user, sectionTrack, cooldownMax);
-        if (user.level().isClientSide) {
+        if (user.level().isClientSide()) {
             this.activeAnimation = IDLE_ANIM;
             heldItemMainHandVisualOverride = null;
             heldItemOffHandVisualOverride = null;
@@ -49,6 +52,10 @@ public class PlayerAbility extends Ability<Player> {
         this(abilityType, user, sectionTrack, 0);
     }
 
+    // PORTING NOTE (GeckoLib 4 -> 5): see Ability#playAnimation's matching porting note for the full explanation of
+    // why a throwaway GeoRenderState and a freshly-looked-up AnimatableManager are safe on this reset()-driven call
+    // path. Unlike the MowzieGeckoEntity case, GeckoPlayer already exposes everything needed directly
+    // (getModel()/getPlayerRenderer()), so no external renderer lookup is required here.
     public void playAnimation(RawAnimation animation, GeckoPlayer.Perspective perspective) {
         if (getUser() != null && getUser().level().isClientSide()) {
             if (perspective == GeckoPlayer.Perspective.FIRST_PERSON) {
@@ -60,12 +67,14 @@ public class PlayerAbility extends Ability<Player> {
             MowzieAnimationController<GeckoPlayer> controller = GeckoPlayer.getAnimationController(getUser(), perspective);
             GeckoPlayer geckoPlayer = GeckoPlayer.getGeckoPlayer(getUser(), perspective);
             if (controller != null && geckoPlayer != null) {
-                controller.playAnimation(geckoPlayer, animation);
+                AnimatableManager<GeckoPlayer> manager = geckoPlayer.getAnimatableInstanceCache()
+                        .getManagerForId(geckoPlayer.getPlayerRenderer().getInstanceId(geckoPlayer, null));
+                controller.playAnimation(geckoPlayer, new GeoRenderState.Impl(), manager, geckoPlayer.getModel(), animation);
             }
         }
     }
 
-    public void playAnimation(String animationName, GeckoPlayer.Perspective perspective, Animation.LoopType loopType) {
+    public void playAnimation(String animationName, GeckoPlayer.Perspective perspective, LoopType loopType) {
         playAnimation(RawAnimation.begin().then(animationName, loopType), perspective);
     }
 
@@ -82,7 +91,7 @@ public class PlayerAbility extends Ability<Player> {
         return getUser().getUsedItemHand();
     }
 
-    public void playAnimation(String animationName, Animation.LoopType loopType, boolean separateLeftAndRight1stPerson, boolean separateLeftAndRight3rdPerson) {
+    public void playAnimation(String animationName, LoopType loopType, boolean separateLeftAndRight1stPerson, boolean separateLeftAndRight3rdPerson) {
         boolean usingMainHand = getActiveHand() == InteractionHand.MAIN_HAND;
         boolean isRightHanded = getUser().getMainArm() == HumanoidArm.RIGHT;
         // 1st person
@@ -105,7 +114,7 @@ public class PlayerAbility extends Ability<Player> {
     @Override
     public void end() {
         super.end();
-        if (getUser().level().isClientSide) {
+        if (getUser().level().isClientSide()) {
             heldItemMainHandVisualOverride = null;
             heldItemOffHandVisualOverride = null;
             firstPersonMainHandDisplay = HandDisplay.DEFAULT;
@@ -123,7 +132,7 @@ public class PlayerAbility extends Ability<Player> {
         return super.canContinueUsing() && !getUser().isSpectator();
     }
 
-    public <E extends GeoEntity> PlayState animationPredicate(AnimationState<E> e, GeckoPlayer.Perspective perspective) {
+    public <E extends GeoEntity> PlayState animationPredicate(AnimationTest<E> e, GeckoPlayer.Perspective perspective) {
         RawAnimation whichAnimation;
         if (perspective == GeckoPlayer.Perspective.FIRST_PERSON) {
             whichAnimation = activeFirstPersonAnimation;
@@ -133,7 +142,7 @@ public class PlayerAbility extends Ability<Player> {
         }
         if (whichAnimation == null || whichAnimation.getAnimationStages().isEmpty())
             return PlayState.STOP;
-        e.getController().setAnimation(whichAnimation);
+        e.controller().setAnimation(whichAnimation);
         return PlayState.CONTINUE;
     }
 

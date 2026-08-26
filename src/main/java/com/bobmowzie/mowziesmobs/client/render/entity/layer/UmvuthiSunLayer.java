@@ -2,25 +2,41 @@ package com.bobmowzie.mowziesmobs.client.render.entity.layer;
 
 import com.bobmowzie.mowziesmobs.client.render.entity.RenderUmvuthi;
 import com.bobmowzie.mowziesmobs.server.entity.umvuthana.EntityUmvuthi;
+import com.geckolib.cache.model.GeoBone;
+import com.geckolib.constant.dataticket.DataTicket;
+import com.geckolib.renderer.base.GeoRenderState;
+import com.geckolib.renderer.base.GeoRenderer;
+import com.geckolib.renderer.base.PerBoneRender;
+import com.geckolib.renderer.base.RenderPassInfo;
+import com.geckolib.renderer.layer.GeoRenderLayer;
 import com.ilexiconn.llibrary.client.util.ClientUtils;
 import com.mojang.blaze3d.vertex.PoseStack;
 import com.mojang.blaze3d.vertex.VertexConsumer;
-import net.minecraft.client.renderer.MultiBufferSource;
-import net.minecraft.client.renderer.RenderType;
+import net.minecraft.client.renderer.SubmitNodeCollector;
+import net.minecraft.client.renderer.rendertype.RenderType;
+import net.minecraft.client.renderer.rendertype.RenderTypes;
 import net.minecraft.client.renderer.texture.OverlayTexture;
 import net.minecraft.util.Mth;
 import net.minecraft.world.phys.Vec3;
+import org.jspecify.annotations.Nullable;
 import org.joml.Matrix3f;
 import org.joml.Matrix4f;
-import software.bernie.geckolib.cache.object.BakedGeoModel;
-import software.bernie.geckolib.cache.object.GeoBone;
-import software.bernie.geckolib.renderer.GeoRenderer;
-import software.bernie.geckolib.renderer.layer.GeoRenderLayer;
-import software.bernie.geckolib.util.RenderUtil;
 
-public class UmvuthiSunLayer extends GeoRenderLayer<EntityUmvuthi> {
-    protected Matrix4f dispatchedMat = new Matrix4f();
-    protected Matrix4f renderEarlyMat = new Matrix4f();
+import java.util.function.BiConsumer;
+
+/**
+ * PORTING NOTE (GeckoLib 4 -> 5 full port): {@code renderForBone} (an old {@code GeoRenderLayer} per-bone override
+ * point, automatically called by the framework for every bone with the PoseStack positioned there) has no direct
+ * equivalent - reimplemented via {@code addPerBoneRender}/{@code PerBoneRender}, matching
+ * {@link UmvuthanaSunLayer}/{@link GeckoBlockLayer}/{@link GeckoItemlayer} (see their javadocs). Live-entity data
+ * needed at render time ({@code shouldRenderSun()}, active-ability supernova blend progress) is captured into the
+ * render state via DataTickets in {@code addRenderData}, since {@code PerBoneRender} callbacks only have
+ * {@code RenderPassInfo}/{@code GeoBone} access, no live entity.
+ */
+public class UmvuthiSunLayer<R extends GeoRenderState> extends GeoRenderLayer<EntityUmvuthi, Void, R> {
+    private static final DataTicket<Boolean> SHOULD_RENDER_SUN = DataTicket.create("mowziesmobs_umvuthi_should_render_sun", Boolean.class);
+    private static final DataTicket<Float> SCALE_MULT = DataTicket.create("mowziesmobs_umvuthi_sun_scale_mult", Float.class);
+
     private final Vec3 v1 = new Vec3(-2,1,-1);
     private final Vec3 v2 = new Vec3(0,1,-1);
     private final Vec3 v3 = new Vec3(-1,0,1);
@@ -136,42 +152,54 @@ public class UmvuthiSunLayer extends GeoRenderLayer<EntityUmvuthi> {
             v6,
     };
 
-    public UmvuthiSunLayer(GeoRenderer<EntityUmvuthi> entityRendererIn) {
+    public UmvuthiSunLayer(GeoRenderer<EntityUmvuthi, Void, R> entityRendererIn) {
         super(entityRendererIn);
     }
 
     @Override
-    public void renderForBone(PoseStack poseStack, EntityUmvuthi umvuthi, GeoBone bone, RenderType renderType, MultiBufferSource bufferSource, VertexConsumer buffer, float partialTicks, int packedLight, int packedOverlay) {
-        super.renderForBone(poseStack, umvuthi, bone, renderType, bufferSource, buffer, partialTicks, packedLight, packedOverlay);
-        if (umvuthi.shouldRenderSun()) {
-            if (bone.isHidden()) return;
-            poseStack.pushPose();
-            RenderUtil.translateToPivotPoint(poseStack, bone);
-            if (bone.getName().equals("sun_render")) {
-                poseStack.translate(0.06d, 0d, -0.0d);
-                poseStack.scale(0.06f, 0.06f, 0.06f);
-                VertexConsumer ivertexbuilder = bufferSource.getBuffer(RenderType.entityTranslucent(RenderUmvuthi.SUN, true));
-                PoseStack.Pose matrixstack$entry = poseStack.last();
-                Matrix4f matrix4f = matrixstack$entry.pose();
-                Matrix3f matrix3f = matrixstack$entry.normal();
+    public void addRenderData(EntityUmvuthi umvuthi, @Nullable Void relatedObject, R renderState, float partialTick) {
+        renderState.addGeckolibData(SHOULD_RENDER_SUN, umvuthi.shouldRenderSun());
 
-                // Blend the sun back to full size after supernova
-                float scaleMult = 1f;
-                if (umvuthi.getActiveAbilityType() == EntityUmvuthi.SUPERNOVA_ABILITY && umvuthi.getActiveAbility().getTicksInUse() > 90) {
-                    scaleMult = (umvuthi.getActiveAbility().getTicksInUse() + partialTicks - 90f) / 10f;
-                    scaleMult = Mth.clamp(scaleMult, 0f, 1f);
-                }
-
-                drawSun(matrix4f, matrix3f, ivertexbuilder, umvuthi.tickCount + partialTicks, scaleMult);
-            }
-            bufferSource.getBuffer(renderType);
-            poseStack.popPose();
+        float scaleMult = 1f;
+        if (umvuthi.getActiveAbilityType() == EntityUmvuthi.SUPERNOVA_ABILITY && umvuthi.getActiveAbility().getTicksInUse() > 90) {
+            scaleMult = (umvuthi.getActiveAbility().getTicksInUse() + partialTick - 90f) / 10f;
+            scaleMult = Mth.clamp(scaleMult, 0f, 1f);
         }
+        renderState.addGeckolibData(SCALE_MULT, scaleMult);
     }
 
     @Override
-    public void render(PoseStack poseStack, EntityUmvuthi entityLivingBaseIn, BakedGeoModel bakedModel, RenderType renderType, MultiBufferSource bufferIn, VertexConsumer buffer, float partialTicks, int packedLight, int packedOverlay) {
+    public void addPerBoneRender(RenderPassInfo<R> renderPassInfo, BiConsumer<GeoBone, PerBoneRender<R>> consumer) {
+        if (!Boolean.TRUE.equals(renderPassInfo.getGeckolibData(SHOULD_RENDER_SUN))) return;
 
+        renderPassInfo.model().getBone("sun_render").ifPresent(bone -> consumer.accept(bone, this::renderSunAtBone));
+    }
+
+    private void renderSunAtBone(RenderPassInfo<R> renderPassInfo, GeoBone bone, SubmitNodeCollector renderTasks) {
+        if (bone.frameSnapshot != null && bone.frameSnapshot.isHidden()) return;
+        if (!"sun_render".equals(bone.name())) return;
+
+        PoseStack poseStack = renderPassInfo.poseStack();
+        poseStack.pushPose();
+        poseStack.translate(0.06d, 0d, -0.0d);
+        poseStack.scale(0.06f, 0.06f, 0.06f);
+
+        RenderType renderType = RenderTypes.entityTranslucent(RenderUmvuthi.SUN, true);
+        int packedLight = renderPassInfo.packedLight();
+        float time = currentTime(renderPassInfo);
+        float scaleMult = renderPassInfo.getOrDefaultGeckolibData(SCALE_MULT, 1f);
+
+        renderTasks.submitCustomGeometry(poseStack, renderType, (pose, vertexConsumer) -> {
+            Matrix4f matrix4f = new Matrix4f(pose.pose());
+            Matrix3f matrix3f = new Matrix3f(pose.normal());
+            drawSun(matrix4f, matrix3f, vertexConsumer, time, scaleMult);
+        });
+
+        poseStack.popPose();
+    }
+
+    private float currentTime(RenderPassInfo<R> renderPassInfo) {
+        return (float) renderPassInfo.renderState().getAnimatableAge();
     }
 
     private void drawSun(Matrix4f matrix4f, Matrix3f matrix3f, VertexConsumer builder, float time, float scaleMultiplier) {

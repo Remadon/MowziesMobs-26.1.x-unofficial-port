@@ -4,6 +4,7 @@ import com.mojang.serialization.Codec;
 import com.mojang.serialization.codecs.RecordCodecBuilder;
 import net.minecraft.core.RegistryAccess;
 import net.minecraft.nbt.CompoundTag;
+import net.minecraft.nbt.NbtOps;
 import net.minecraft.network.RegistryFriendlyByteBuf;
 import net.minecraft.network.codec.ByteBufCodecs;
 import net.minecraft.network.codec.StreamCodec;
@@ -50,20 +51,10 @@ public record Trade(ItemStack input, ItemStack output, int weight) {
     }
 
     public CompoundTag serialize(RegistryAccess access) {
-        CompoundTag compound = new CompoundTag();
-        compound.put("input", input.save(access, new CompoundTag()));
-        compound.put("output", output.save(access, new CompoundTag()));
-        compound.putInt("weight", weight);
-        return compound;
+        return (CompoundTag) CODEC.encodeStart(access.createSerializationContext(NbtOps.INSTANCE), this).getOrThrow();
     }
 
     public static Trade deserialize(RegistryAccess access, CompoundTag compound) {
-        ItemStack input = ItemStack.parseOptional(access, compound.getCompound("input"));
-        ItemStack output = ItemStack.parseOptional(access, compound.getCompound("output"));
-        int weight = compound.getInt("weight");
-        if (input.isEmpty() || output.isEmpty() || weight < 1) {
-            return null;
-        }
-        return new Trade(input, output, weight);
+        return CODEC.parse(access.createSerializationContext(NbtOps.INSTANCE), compound).result().orElse(null);
     }
 }

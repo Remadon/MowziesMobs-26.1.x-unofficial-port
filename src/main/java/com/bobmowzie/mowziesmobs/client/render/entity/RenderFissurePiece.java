@@ -6,14 +6,17 @@ import com.bobmowzie.mowziesmobs.server.entity.effects.geomancy.EntityFissurePie
 import com.ilexiconn.llibrary.client.util.ClientUtils;
 import com.mojang.blaze3d.vertex.PoseStack;
 import com.mojang.blaze3d.vertex.VertexConsumer;
-import net.minecraft.client.renderer.MultiBufferSource;
-import net.minecraft.client.renderer.RenderType;
+import net.minecraft.client.renderer.SubmitNodeCollector;
 import net.minecraft.client.renderer.entity.EntityRenderer;
 import net.minecraft.client.renderer.entity.EntityRendererProvider;
+import net.minecraft.client.renderer.entity.state.EntityRenderState;
+import net.minecraft.client.renderer.rendertype.RenderType;
+import net.minecraft.client.renderer.rendertype.RenderTypes;
+import net.minecraft.client.renderer.state.level.CameraRenderState;
 import net.minecraft.client.renderer.texture.OverlayTexture;
 import net.minecraft.core.BlockPos;
 import net.minecraft.core.Direction;
-import net.minecraft.resources.ResourceLocation;
+import net.minecraft.resources.Identifier;
 import net.minecraft.world.level.Level;
 import net.minecraft.world.level.block.RenderShape;
 import net.minecraft.world.level.block.state.BlockState;
@@ -29,14 +32,20 @@ import java.util.Arrays;
 import java.util.Optional;
 import java.util.OptionalDouble;
 
-public class RenderFissurePiece extends EntityRenderer<EntityFissurePiece> {
-    private static final ResourceLocation TEXTURE0 = MMCommon.resource("textures/particle/crack_0.png");
-    private static final ResourceLocation TEXTURE1 = MMCommon.resource("textures/particle/crack_1.png");
-    private static final ResourceLocation TEXTURE2 = MMCommon.resource("textures/particle/crack_2.png");
-    private static final ResourceLocation TEXTURE3 = MMCommon.resource("textures/particle/crack_3.png");
-    private static final ResourceLocation TEXTURE4 = MMCommon.resource("textures/particle/crack_4.png");
-    private static final ResourceLocation TEXTURE5 = MMCommon.resource("textures/particle/crack_5.png");
-    private static final ResourceLocation[] TEXTURES = new ResourceLocation[] {
+/**
+ * PORTING NOTE: this renderer reads live entity/level state extensively (block queries around the entity, growth
+ * tick for texture selection) - the render state simply captures a live entity reference plus the interpolated yRot
+ * the render dispatcher used to pass as {@code entityYaw}, matching the established pattern for these effect
+ * renderers elsewhere in this scope.
+ */
+public class RenderFissurePiece extends EntityRenderer<EntityFissurePiece, RenderFissurePiece.FissurePieceRenderState> {
+    private static final Identifier TEXTURE0 = MMCommon.resource("textures/particle/crack_0.png");
+    private static final Identifier TEXTURE1 = MMCommon.resource("textures/particle/crack_1.png");
+    private static final Identifier TEXTURE2 = MMCommon.resource("textures/particle/crack_2.png");
+    private static final Identifier TEXTURE3 = MMCommon.resource("textures/particle/crack_3.png");
+    private static final Identifier TEXTURE4 = MMCommon.resource("textures/particle/crack_4.png");
+    private static final Identifier TEXTURE5 = MMCommon.resource("textures/particle/crack_5.png");
+    private static final Identifier[] TEXTURES = new Identifier[] {
             TEXTURE0,
             TEXTURE1,
             TEXTURE2,
@@ -50,8 +59,7 @@ public class RenderFissurePiece extends EntityRenderer<EntityFissurePiece> {
         super(mgr);
     }
 
-    @Override
-    public ResourceLocation getTextureLocation(EntityFissurePiece entity) {
+    private static Identifier getTextureLocation(EntityFissurePiece entity) {
         int fullGrownTick = EntityFissure.TICKS_PER_PIECE;
         if (entity.getGrowTick() < fullGrownTick) {
             int whichTex = (int) (5 * (double) entity.getGrowTick() / (double) fullGrownTick);
@@ -65,21 +73,45 @@ public class RenderFissurePiece extends EntityRenderer<EntityFissurePiece> {
     }
 
     @Override
-    public void render(EntityFissurePiece entityIn, float entityYaw, float partialTicks, PoseStack matrixStackIn, MultiBufferSource bufferIn, int packedLightIn) {
+    public FissurePieceRenderState createRenderState() {
+        return new FissurePieceRenderState();
+    }
+
+    @Override
+    public void extractRenderState(EntityFissurePiece entity, FissurePieceRenderState state, float partialTicks) {
+        super.extractRenderState(entity, state, partialTicks);
+
+        state.entity = entity;
+        state.yRot = entity.getYRot(partialTicks);
+    }
+
+    @Override
+    public void submit(FissurePieceRenderState state, PoseStack poseStack, SubmitNodeCollector renderTasks, CameraRenderState cameraState) {
+        EntityFissurePiece entityIn = state.entity;
+        float entityYaw = state.yRot;
+
         Vec3 corner0 = new Vec3(-SPRITE_SCALE/2, 0, -SPRITE_SCALE/2).yRot(entityYaw);
         Vec3 corner1 = new Vec3(SPRITE_SCALE/2, 0, SPRITE_SCALE/2).yRot(entityYaw);
         double extent = max(corner0.x(), corner1.x(), corner0.z(), corner1.z()).orElse(1);
         Vec3 minCorner = new Vec3(-extent, -1, -extent).add(entityIn.getX(), entityIn.getY(), entityIn.getZ());
         Vec3 maxCorner = new Vec3(extent, 1, extent).add(entityIn.getX(), entityIn.getY(), entityIn.getZ());
 
-        matrixStackIn.pushPose();
-        VertexConsumer ivertexbuilder = bufferIn.getBuffer(RenderType.entityTranslucent(getTextureLocation(entityIn)));
+        RenderType renderType = RenderTypes.entityTranslucent(getTextureLocation(entityIn));
+        int packedLightIn = state.lightCoords;
 
-        for(BlockPos blockpos : BlockPos.betweenClosed(BlockPos.containing(minCorner), BlockPos.containing(maxCorner))) {
-            BlockState block = entityIn.level().getBlockState(blockpos.below());
-            renderBlockDecal(entityIn, entityIn.level(), block, blockpos, entityIn.getX(), entityIn.getY(), entityIn.getZ(), matrixStackIn, ivertexbuilder, packedLightIn);
-        }
-        matrixStackIn.popPose();
+        // NOTE: submitCustomGeometry's callback runs later (deferred), with `pose` a snapshot of poseStack.last()
+        // captured at call time - build matrices from that snapshot directly rather than reading the (by-then
+        // mutated/popped) outer `poseStack`. See PORTING_NOTES.md's "submitCustomGeometry deferred pose" finding.
+        renderTasks.submitCustomGeometry(poseStack, renderType, (pose, vertexConsumer) -> {
+            Matrix4f matrix4f = pose.pose();
+            Matrix3f matrix3f = pose.normal();
+            for (BlockPos blockpos : BlockPos.betweenClosed(BlockPos.containing(minCorner), BlockPos.containing(maxCorner))) {
+                BlockState block = entityIn.level().getBlockState(blockpos.below());
+                renderBlockDecal(entityIn, entityIn.level(), block, blockpos, entityIn.getX(), entityIn.getY(), entityIn.getZ(), matrix4f, matrix3f, vertexConsumer, packedLightIn);
+            }
+        });
+
+        super.submit(state, poseStack, renderTasks, cameraState);
     }
 
     private static Vec2 rotateVec2(Vec2 v, float angle) {
@@ -155,10 +187,7 @@ public class RenderFissurePiece extends EntityRenderer<EntityFissurePiece> {
         return new Vec2(relativeCorner.x / (2.0f * SPRITE_SCALE) + 0.5f, relativeCorner.y / (2.0f * SPRITE_SCALE) + 0.5f);
     }
 
-    private static void renderBlockDecal(EntityFissurePiece entity, Level level, BlockState blockstate, BlockPos blockpos, double x, double y, double z, PoseStack matrixStack, VertexConsumer builder, int packedLightIn) {
-        PoseStack.Pose matrixstack$entry = matrixStack.last();
-        Matrix4f matrix4f = matrixstack$entry.pose();
-        Matrix3f matrix3f = matrixstack$entry.normal();
+    private static void renderBlockDecal(EntityFissurePiece entity, Level level, BlockState blockstate, BlockPos blockpos, double x, double y, double z, Matrix4f matrix4f, Matrix3f matrix3f, VertexConsumer builder, int packedLightIn) {
         Vec2 center = new Vec2((float) x, (float) z);
         double ex = entity.xOld + (entity.getX() - entity.xOld);
         double ey = entity.yOld + (entity.getY() - entity.yOld);
@@ -268,5 +297,10 @@ public class RenderFissurePiece extends EntityRenderer<EntityFissurePiece> {
     public static void drawVertex(Matrix4f matrix, Matrix3f normals, VertexConsumer vertexBuilder, float offsetX, float offsetY, float offsetZ, float textureX, float textureY, float alpha, int packedLightIn) {
         VertexConsumer vertexConsumer = vertexBuilder.addVertex(matrix, offsetX, offsetY, offsetZ).setColor(0, 0, 0, 1 * alpha).setUv(textureX, textureY).setOverlay(OverlayTexture.NO_OVERLAY).setLight(packedLightIn);
         ClientUtils.transformNormals(vertexConsumer, normals, 0, 1, 0);
+    }
+
+    public static class FissurePieceRenderState extends EntityRenderState {
+        public EntityFissurePiece entity;
+        public float yRot;
     }
 }

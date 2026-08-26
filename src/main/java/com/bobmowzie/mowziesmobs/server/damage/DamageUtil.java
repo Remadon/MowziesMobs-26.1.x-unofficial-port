@@ -2,6 +2,7 @@ package com.bobmowzie.mowziesmobs.server.damage;
 
 import com.bobmowzie.mowziesmobs.server.capability.DataHandler;
 import com.bobmowzie.mowziesmobs.server.capability.LivingData;
+import net.minecraft.server.level.ServerLevel;
 import net.minecraft.sounds.SoundEvent;
 import net.minecraft.sounds.SoundEvents;
 import net.minecraft.tags.DamageTypeTags;
@@ -16,7 +17,7 @@ import org.apache.commons.lang3.tuple.Pair;
 public class DamageUtil {
     // TODO: Works for current use cases, but possibly not for future edge cases. Use reflection to get hurt sound for onHit2?
     public static Pair<Boolean, Boolean> dealMixedDamage(LivingEntity target, DamageSource source1, float amount1, DamageSource source2, float amount2) {
-        if (target.level().isClientSide()) return Pair.of(false, false);
+        if (!(target.level() instanceof ServerLevel serverLevel)) return Pair.of(false, false);
         boolean flag1 = source1.getEntity() != null && target.isAlliedTo(source1.getEntity());
         boolean flag2 = source2.getEntity() != null && target.isAlliedTo(source2.getEntity());
         if(flag1 || flag2) return Pair.of(false, false);
@@ -24,7 +25,11 @@ public class DamageUtil {
         data.setLastDamage(-1);
         float damageSoFar = 0;
         float origLastDamage = target.lastHurt;
-        boolean hit1 = target.hurt(source1, amount1);
+        // PORTING NOTE (1.21.1 -> 26.1.2): Entity#hurt(DamageSource, float) is now a final void convenience method
+        // that just dispatches to hurtServer/hurtClient - the boolean-returning overload moved to
+        // hurtServer(ServerLevel, DamageSource, float) (confirmed against real 26.1.2 Entity/LivingEntity source).
+        // Safe here since this method already early-returns unless running on the logical server.
+        boolean hit1 = target.hurtServer(serverLevel, source1, amount1);
         boolean hit1Registered = hit1;
         if (data.getLastDamage() != -1) {
             hit1Registered = true;
@@ -34,7 +39,7 @@ public class DamageUtil {
         }
         target.lastHurt = Math.max(target.lastHurt - amount1, 0);
         data.setLastDamage(-1);
-        boolean hit2 = target.hurt(source2, amount2);
+        boolean hit2 = target.hurtServer(serverLevel, source2, amount2);
         if (data.getLastDamage() != 0) {
             damageSoFar += amount2;
         }

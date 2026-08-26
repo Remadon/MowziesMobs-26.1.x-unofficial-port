@@ -67,7 +67,9 @@ public abstract class MowzieStructure extends Structure {
         }
 
         ChunkPos chunkPos = context.chunkPos();
-        BlockPos centerOfChunk = new BlockPos((chunkPos.x << 4) + 7, 0, (chunkPos.z << 4) + 7);
+        // PORTING NOTE (1.21.1 -> 26.1.2): ChunkPos is now a record(int x, int z) - x/z are no longer public
+        // fields, use the record accessors x()/z() (confirmed against real 26.1.2 ChunkPos source).
+        BlockPos centerOfChunk = new BlockPos((chunkPos.x() << 4) + 7, 0, (chunkPos.z() << 4) + 7);
 
         int i = chunkPos.getMiddleBlockX();
         int j = chunkPos.getMiddleBlockZ();

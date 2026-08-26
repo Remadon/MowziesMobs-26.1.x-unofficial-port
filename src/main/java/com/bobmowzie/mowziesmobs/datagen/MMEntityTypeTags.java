@@ -6,20 +6,18 @@ import net.minecraft.core.HolderLookup;
 import net.minecraft.core.registries.Registries;
 import net.minecraft.data.PackOutput;
 import net.minecraft.data.tags.EntityTypeTagsProvider;
-import net.minecraft.resources.ResourceLocation;
+import net.minecraft.resources.Identifier;
 import net.minecraft.tags.EntityTypeTags;
 import net.minecraft.tags.TagKey;
 import net.minecraft.world.entity.EntityType;
 import net.neoforged.neoforge.common.Tags;
-import net.neoforged.neoforge.common.data.ExistingFileHelper;
 import org.jetbrains.annotations.NotNull;
-import org.jetbrains.annotations.Nullable;
 
 import java.util.concurrent.CompletableFuture;
 
 public class MMEntityTypeTags extends EntityTypeTagsProvider {
-    public MMEntityTypeTags(PackOutput output, CompletableFuture<HolderLookup.Provider> provider, @Nullable ExistingFileHelper existingFileHelper) {
-        super(output, provider, MMCommon.MODID, existingFileHelper);
+    public MMEntityTypeTags(PackOutput output, CompletableFuture<HolderLookup.Provider> provider) {
+        super(output, provider, MMCommon.MODID);
     }
 
     @Override
@@ -71,6 +69,6 @@ public class MMEntityTypeTags extends EntityTypeTagsProvider {
     }
 
     private static TagKey<EntityType<?>> key(String path) {
-        return TagKey.create(Registries.ENTITY_TYPE, ResourceLocation.fromNamespaceAndPath(MMCommon.MODID, path));
+        return TagKey.create(Registries.ENTITY_TYPE, Identifier.fromNamespaceAndPath(MMCommon.MODID, path));
     }
 }

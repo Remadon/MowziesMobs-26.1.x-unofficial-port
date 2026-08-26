@@ -4,8 +4,8 @@ import com.bobmowzie.mowziesmobs.client.model.tools.MMModelAnimator;
 import com.bobmowzie.mowziesmobs.server.entity.MowzieLLibraryEntity;
 import com.ilexiconn.llibrary.client.model.tools.AdvancedModelBase;
 import com.ilexiconn.llibrary.client.model.tools.BasicModelRenderer;
-import net.minecraft.client.renderer.RenderType;
-import net.minecraft.resources.ResourceLocation;
+import net.minecraft.client.renderer.rendertype.RenderType;
+import net.minecraft.resources.Identifier;
 import net.minecraft.world.entity.Entity;
 
 import java.util.function.Function;
@@ -17,7 +17,7 @@ public abstract class MowzieEntityModel<T extends MowzieLLibraryEntity> extends 
         super();
     }
 
-    protected MowzieEntityModel(Function<ResourceLocation, RenderType> renderTypeFunction) {
+    protected MowzieEntityModel(Function<Identifier, RenderType> renderTypeFunction) {
         super(renderTypeFunction);
     }
 

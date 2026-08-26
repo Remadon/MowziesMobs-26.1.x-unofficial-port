@@ -20,7 +20,7 @@ import net.minecraft.world.phys.BlockHitResult;
 import net.minecraft.world.phys.HitResult;
 import net.minecraft.world.phys.Vec3;
 import net.neoforged.neoforge.event.entity.living.LivingEvent;
-import software.bernie.geckolib.animation.RawAnimation;
+import com.geckolib.animation.RawAnimation;
 
 public class SpawnPillarAbility extends PlayerAbility {
     private static int MAX_DURATION = 120;
@@ -66,7 +66,7 @@ public class SpawnPillarAbility extends PlayerAbility {
     @Override
     public void tickUsing() {
         super.tickUsing();
-        getUser().addEffect(new MobEffectInstance(MobEffects.MOVEMENT_SLOWDOWN, 3, 2, false, false));
+        getUser().addEffect(new MobEffectInstance(MobEffects.SLOWNESS, 3, 2, false, false));
     }
 
     @Override
@@ -81,7 +81,7 @@ public class SpawnPillarAbility extends PlayerAbility {
 
         pillar = new EntityPillar(EntityHandler.PILLAR.get(), getUser().level(), getUser(), spawnPillarBlock, spawnPillarPos);
         pillar.setPos(spawnPillarPos.getX() + 0.5F, spawnPillarPos.getY() + 1, spawnPillarPos.getZ() + 0.5F);
-        if (!getUser().level().isClientSide && pillar.checkCanSpawn()) {
+        if (!getUser().level().isClientSide() && pillar.checkCanSpawn()) {
             getUser().level().addFreshEntity(pillar);
         }
     }
@@ -131,12 +131,12 @@ public class SpawnPillarAbility extends PlayerAbility {
         if (stack.getItem() == ItemHandler.EARTHREND_GAUNTLET.get()) {
             InteractionHand handIn = getUser().getUsedItemHand();
             if (stack.getDamageValue() + 6 < stack.getMaxDamage()) {
-                stack.hurtAndBreak(6, getUser(), LivingEntity.getSlotForHand(handIn));
+                stack.hurtAndBreak(6, getUser(), handIn.asEquipmentSlot());
                 return true;
             }
             else {
                 if (ConfigHandler.COMMON.TOOLS_AND_ABILITIES.EARTHREND_GAUNTLET.breakable.get()) {
-                    stack.hurtAndBreak(6, getUser(), LivingEntity.getSlotForHand(handIn));
+                    stack.hurtAndBreak(6, getUser(), handIn.asEquipmentSlot());
                 }
                 return false;
             }

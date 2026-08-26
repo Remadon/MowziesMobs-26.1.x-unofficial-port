@@ -16,9 +16,9 @@ import net.minecraft.core.BlockPos;
 import net.minecraft.core.Direction;
 import net.minecraft.core.Vec3i;
 import net.minecraft.nbt.CompoundTag;
-import net.minecraft.resources.ResourceLocation;
+import net.minecraft.resources.Identifier;
 import net.minecraft.util.RandomSource;
-import net.minecraft.world.entity.MobSpawnType;
+import net.minecraft.world.entity.EntitySpawnReason;
 import net.minecraft.world.entity.decoration.ItemFrame;
 import net.minecraft.world.item.ItemStack;
 import net.minecraft.world.level.*;
@@ -51,41 +51,41 @@ import java.util.Set;
 public class UmvuthanaGrovePieces {
     private static final Set<Block> BLOCKS_NEEDING_POSTPROCESSING = ImmutableSet.<Block>builder().add(Blocks.NETHER_BRICK_FENCE).add(Blocks.TORCH).add(Blocks.WALL_TORCH).add(Blocks.OAK_FENCE).add(Blocks.SPRUCE_FENCE).add(Blocks.DARK_OAK_FENCE).add(Blocks.ACACIA_FENCE).add(Blocks.BIRCH_FENCE).add(Blocks.JUNGLE_FENCE).add(Blocks.MANGROVE_FENCE).add(Blocks.LADDER).add(Blocks.SKELETON_SKULL).build();
 
-    public static final ResourceLocation PLATFORM_1 = ResourceLocation.fromNamespaceAndPath(MMCommon.MODID, "umvuthana/umvuthana_platform_1");
-    public static final ResourceLocation PLATFORM_2 = ResourceLocation.fromNamespaceAndPath(MMCommon.MODID, "umvuthana/umvuthana_platform_2");
-    public static final ResourceLocation[] PLATFORMS = new ResourceLocation[] {
+    public static final Identifier PLATFORM_1 = Identifier.fromNamespaceAndPath(MMCommon.MODID, "umvuthana/umvuthana_platform_1");
+    public static final Identifier PLATFORM_2 = Identifier.fromNamespaceAndPath(MMCommon.MODID, "umvuthana/umvuthana_platform_2");
+    public static final Identifier[] PLATFORMS = new Identifier[] {
             PLATFORM_1,
             PLATFORM_2
     };
-    public static final ResourceLocation PLATFORM_EXTEND = ResourceLocation.fromNamespaceAndPath(MMCommon.MODID, "umvuthana/umvuthana_platform_extend");
-    public static final ResourceLocation FIREPIT = ResourceLocation.fromNamespaceAndPath(MMCommon.MODID, "umvuthana/umvuthana_firepit");
-    public static final ResourceLocation FIREPIT_SMALL_1 = ResourceLocation.fromNamespaceAndPath(MMCommon.MODID, "umvuthana/umvuthana_firepit_small_1");
-    public static final ResourceLocation FIREPIT_SMALL_2 = ResourceLocation.fromNamespaceAndPath(MMCommon.MODID, "umvuthana/umvuthana_firepit_small_2");
-    public static final ResourceLocation[] FIREPIT_SMALL = new ResourceLocation[] {
+    public static final Identifier PLATFORM_EXTEND = Identifier.fromNamespaceAndPath(MMCommon.MODID, "umvuthana/umvuthana_platform_extend");
+    public static final Identifier FIREPIT = Identifier.fromNamespaceAndPath(MMCommon.MODID, "umvuthana/umvuthana_firepit");
+    public static final Identifier FIREPIT_SMALL_1 = Identifier.fromNamespaceAndPath(MMCommon.MODID, "umvuthana/umvuthana_firepit_small_1");
+    public static final Identifier FIREPIT_SMALL_2 = Identifier.fromNamespaceAndPath(MMCommon.MODID, "umvuthana/umvuthana_firepit_small_2");
+    public static final Identifier[] FIREPIT_SMALL = new Identifier[] {
             FIREPIT_SMALL_1,
             FIREPIT_SMALL_2
     };
-    public static final ResourceLocation TREE_1 = ResourceLocation.fromNamespaceAndPath(MMCommon.MODID, "umvuthana/umvuthana_tree_1");
-    public static final ResourceLocation TREE_2 = ResourceLocation.fromNamespaceAndPath(MMCommon.MODID, "umvuthana/umvuthana_tree_2");
-    public static final ResourceLocation TREE_3 = ResourceLocation.fromNamespaceAndPath(MMCommon.MODID, "umvuthana/umvuthana_tree_3");
-    public static final ResourceLocation[] TREES = new ResourceLocation[] {
+    public static final Identifier TREE_1 = Identifier.fromNamespaceAndPath(MMCommon.MODID, "umvuthana/umvuthana_tree_1");
+    public static final Identifier TREE_2 = Identifier.fromNamespaceAndPath(MMCommon.MODID, "umvuthana/umvuthana_tree_2");
+    public static final Identifier TREE_3 = Identifier.fromNamespaceAndPath(MMCommon.MODID, "umvuthana/umvuthana_tree_3");
+    public static final Identifier[] TREES = new Identifier[] {
             TREE_1,
             TREE_2,
             TREE_3
     };
-    public static final ResourceLocation SPIKE_1 = ResourceLocation.fromNamespaceAndPath(MMCommon.MODID, "umvuthana/umvuthana_spike_1");
-    public static final ResourceLocation SPIKE_2 = ResourceLocation.fromNamespaceAndPath(MMCommon.MODID, "umvuthana/umvuthana_spike_2");
-    public static final ResourceLocation SPIKE_3 = ResourceLocation.fromNamespaceAndPath(MMCommon.MODID, "umvuthana/umvuthana_spike_3");
-    public static final ResourceLocation SPIKE_4 = ResourceLocation.fromNamespaceAndPath(MMCommon.MODID, "umvuthana/umvuthana_spike_4");
-    public static final ResourceLocation[] SPIKES = new ResourceLocation[] {
+    public static final Identifier SPIKE_1 = Identifier.fromNamespaceAndPath(MMCommon.MODID, "umvuthana/umvuthana_spike_1");
+    public static final Identifier SPIKE_2 = Identifier.fromNamespaceAndPath(MMCommon.MODID, "umvuthana/umvuthana_spike_2");
+    public static final Identifier SPIKE_3 = Identifier.fromNamespaceAndPath(MMCommon.MODID, "umvuthana/umvuthana_spike_3");
+    public static final Identifier SPIKE_4 = Identifier.fromNamespaceAndPath(MMCommon.MODID, "umvuthana/umvuthana_spike_4");
+    public static final Identifier[] SPIKES = new Identifier[] {
             SPIKE_1,
             SPIKE_2,
             SPIKE_3,
             SPIKE_4
     };
-    public static final ResourceLocation THRONE = ResourceLocation.fromNamespaceAndPath(MMCommon.MODID, "umvuthana/umvuthi_throne");
+    public static final Identifier THRONE = Identifier.fromNamespaceAndPath(MMCommon.MODID, "umvuthana/umvuthi_throne");
 
-    private static final Map<ResourceLocation, BlockPos> OFFSET = ImmutableMap.<ResourceLocation, BlockPos>builder()
+    private static final Map<Identifier, BlockPos> OFFSET = ImmutableMap.<Identifier, BlockPos>builder()
             .put(PLATFORM_1, new BlockPos(-5, 0, -5))
             .put(PLATFORM_2, new BlockPos(0, 0, -5))
             .put(PLATFORM_EXTEND, new BlockPos(8, 1, -2))
@@ -102,7 +102,7 @@ public class UmvuthanaGrovePieces {
             .put(THRONE, new BlockPos(-9, 0, 0))
             .build();
 
-    private static final Map<ResourceLocation, Pair<BlockPos, BlockPos>> BOUNDS_OFFSET = ImmutableMap.<ResourceLocation, Pair<BlockPos, BlockPos>>builder()
+    private static final Map<Identifier, Pair<BlockPos, BlockPos>> BOUNDS_OFFSET = ImmutableMap.<Identifier, Pair<BlockPos, BlockPos>>builder()
             .put(PLATFORM_1, new Pair<>(new BlockPos(1, 0, 0), new BlockPos(-3, 0, -3)))
             .put(PLATFORM_2, new Pair<>(new BlockPos(0, 0, 0), new BlockPos(0, 0, -3)))
             .put(PLATFORM_EXTEND, new Pair<>(new BlockPos(0, 0, 0), new BlockPos(0, 0, 0)))
@@ -119,13 +119,13 @@ public class UmvuthanaGrovePieces {
             .put(THRONE, new Pair<>(new BlockPos(4, 0, 1), new BlockPos(-4, 0, -3)))
             .build();
 
-    public static StructurePiece addPiece(ResourceLocation resourceLocation, StructureTemplateManager manager, BlockPos pos, Rotation rot, StructurePieceAccessor pieces, WorldgenRandom rand) {
+    public static StructurePiece addPiece(Identifier resourceLocation, StructureTemplateManager manager, BlockPos pos, Rotation rot, StructurePieceAccessor pieces, WorldgenRandom rand) {
         StructurePiece newPiece = new UmvuthanaGrovePieces.Piece(manager, resourceLocation, rot, pos);
         pieces.addPiece(newPiece);
         return newPiece;
     }
 
-    public static StructurePiece addPieceCheckBounds(ResourceLocation resourceLocation, StructureTemplateManager manager, BlockPos pos, Rotation rot, StructurePieceAccessor pieces, WorldgenRandom rand, List<StructurePiece> ignore) {
+    public static StructurePiece addPieceCheckBounds(Identifier resourceLocation, StructureTemplateManager manager, BlockPos pos, Rotation rot, StructurePieceAccessor pieces, WorldgenRandom rand, List<StructurePiece> ignore) {
         UmvuthanaGrovePieces.Piece newPiece = new UmvuthanaGrovePieces.Piece(manager, resourceLocation, rot, pos);
         StructurePiece collisionPiece = pieces.findCollisionPiece(newPiece.getCollisionBoundingBox());
         if (collisionPiece != null && !ignore.contains(collisionPiece)) return null;
@@ -146,7 +146,7 @@ public class UmvuthanaGrovePieces {
         return newPiece;
     }
 
-    public static StructurePiece addPieceCheckBounds(ResourceLocation resourceLocation, StructureTemplateManager manager, BlockPos pos, Rotation rot, StructurePiecesBuilder pieces, WorldgenRandom rand) {
+    public static StructurePiece addPieceCheckBounds(Identifier resourceLocation, StructureTemplateManager manager, BlockPos pos, Rotation rot, StructurePiecesBuilder pieces, WorldgenRandom rand) {
        return addPieceCheckBounds(resourceLocation, manager, pos, rot, pieces, rand, Collections.emptyList());
     }
 
@@ -170,23 +170,26 @@ public class UmvuthanaGrovePieces {
     }
 
     public static class Piece extends TemplateStructurePiece {
-        protected ResourceLocation resourceLocation;
+        protected Identifier resourceLocation;
         public BoundingBox collisionBoundingBox;
 
-        public Piece(StructurePieceType pieceType, StructureTemplateManager manager, ResourceLocation resourceLocationIn, Rotation rotation, BlockPos pos) {
+        public Piece(StructurePieceType pieceType, StructureTemplateManager manager, Identifier resourceLocationIn, Rotation rotation, BlockPos pos) {
             super(pieceType, 0, manager, resourceLocationIn, resourceLocationIn.toString(), makeSettings(rotation, resourceLocationIn), makePosition(resourceLocationIn, pos, rotation));
             this.resourceLocation = resourceLocationIn;
             this.collisionBoundingBox = makeCollisionBoundingBox();
             if (resourceLocation == THRONE || resourceLocation == FIREPIT) boundingBox = getBoundingBox().moved(0, 1, 0);
         }
 
+        // PORTING NOTE (1.21.1 -> 26.1.2): CompoundTag#getString now returns Optional<String> instead of a raw
+        // String (confirmed against real 26.1.2 CompoundTag source) - getStringOr(key, default) is the direct
+        // raw-String replacement.
         public Piece(StructurePieceType pieceType, StructurePieceSerializationContext context, CompoundTag tagCompound) {
-            super(pieceType, tagCompound, context.structureTemplateManager(), (resourceLocation) -> makeSettings(Rotation.valueOf(tagCompound.getString("Rot")), resourceLocation));
+            super(pieceType, tagCompound, context.structureTemplateManager(), (resourceLocation) -> makeSettings(Rotation.valueOf(tagCompound.getStringOr("Rot", Rotation.NONE.name())), resourceLocation));
             this.collisionBoundingBox = makeCollisionBoundingBox();
             if (resourceLocation == THRONE || resourceLocation == FIREPIT) boundingBox = getBoundingBox().moved(0, 1, 0);
         }
 
-        public Piece(StructureTemplateManager manager, ResourceLocation resourceLocationIn, Rotation rotation, BlockPos pos) {
+        public Piece(StructureTemplateManager manager, Identifier resourceLocationIn, Rotation rotation, BlockPos pos) {
             this(StructureTypeHandler.UMVUTHANA_GROVE_PIECE.get(), manager, resourceLocationIn, rotation, pos);
         }
 
@@ -194,11 +197,11 @@ public class UmvuthanaGrovePieces {
             this(StructureTypeHandler.UMVUTHANA_GROVE_PIECE.get(), context, tagCompound);
         }
 
-        private static StructurePlaceSettings makeSettings(Rotation rotation, ResourceLocation resourceLocation) {
+        private static StructurePlaceSettings makeSettings(Rotation rotation, Identifier resourceLocation) {
             return (new StructurePlaceSettings()).setRotation(rotation).setMirror(Mirror.NONE).addProcessor(BlockIgnoreProcessor.STRUCTURE_BLOCK);
         }
 
-        private static BlockPos makePosition(ResourceLocation resourceLocation, BlockPos pos, Rotation rotation) {
+        private static BlockPos makePosition(Identifier resourceLocation, BlockPos pos, Rotation rotation) {
             return pos.offset(UmvuthanaGrovePieces.OFFSET.get(resourceLocation).rotate(rotation));
         }
 
@@ -268,12 +271,15 @@ public class UmvuthanaGrovePieces {
                 barako.setPos(pos.getX() + 0.5, pos.getY(), pos.getZ() + 0.5);
                 int i = rotation.rotate(3, 4);
                 barako.setDirection(i);
-                barako.finalizeSpawn(worldIn, worldIn.getCurrentDifficultyAt(barako.blockPosition()), MobSpawnType.STRUCTURE, null);
+                barako.finalizeSpawn(worldIn, worldIn.getCurrentDifficultyAt(barako.blockPosition()), EntitySpawnReason.STRUCTURE, null);
                 BlockPos offset = new BlockPos(0, 0, -18);
                 offset = offset.rotate(rotation);
                 BlockPos firePitPos = pos.offset(offset);
                 firePitPos = worldIn.getHeightmapPos(Heightmap.Types.MOTION_BLOCKING_NO_LEAVES, firePitPos);
-                barako.restrictTo(firePitPos, -1);
+                // PORTING NOTE (1.21.1 -> 26.1.2): Mob#restrictTo(BlockPos, int) was renamed to
+                // setHomeTo(BlockPos, int) - same semantics, including the radius=-1 "no restriction" sentinel
+                // (confirmed against real 26.1.2 Mob source: homeRadius == -1 short-circuits isWithinHome to true).
+                barako.setHomeTo(firePitPos, -1);
                 worldIn.addFreshEntity(barako);
             }
             else if ("chest".equals(function)) {
@@ -370,7 +376,8 @@ public class UmvuthanaGrovePieces {
         }
 
         public BlockPos getGroundPos(LevelAccessor worldIn, BlockPos startPos) {
-            while(!Block.canSupportRigidBlock(worldIn, startPos) && startPos.getY() > worldIn.getMinBuildHeight()) {
+            // PORTING NOTE: LevelHeightAccessor#getMinBuildHeight() -> getMinY() (renamed).
+            while(!Block.canSupportRigidBlock(worldIn, startPos) && startPos.getY() > worldIn.getMinY()) {
                 startPos = startPos.below();
             }
             return startPos;
@@ -483,9 +490,10 @@ public class UmvuthanaGrovePieces {
                     int z = (int) (distance * Math.cos(Math.toRadians(angle))) + 4;
                     BlockPos bPos = findGround(worldIn, x, z);
                     umvuthana.setPos(bPos.getX(), bPos.getY(), bPos.getZ());
-                    if (bPos.getY() > 0 && umvuthana.checkSpawnRules(worldIn, MobSpawnType.STRUCTURE) && worldIn.noCollision(umvuthana.getBoundingBox())) {
-                        umvuthana.finalizeSpawn(worldIn, worldIn.getCurrentDifficultyAt(umvuthana.blockPosition()), MobSpawnType.STRUCTURE, null);
-                        umvuthana.restrictTo(centerPos, 25);
+                    if (bPos.getY() > 0 && umvuthana.checkSpawnRules(worldIn, EntitySpawnReason.STRUCTURE) && worldIn.noCollision(umvuthana.getBoundingBox())) {
+                        umvuthana.finalizeSpawn(worldIn, worldIn.getCurrentDifficultyAt(umvuthana.blockPosition()), EntitySpawnReason.STRUCTURE, null);
+                        // PORTING NOTE: Mob#restrictTo(BlockPos, int) was renamed to setHomeTo(BlockPos, int).
+                        umvuthana.setHomeTo(centerPos, 25);
                         worldIn.addFreshEntity(umvuthana);
                         break;
                     }

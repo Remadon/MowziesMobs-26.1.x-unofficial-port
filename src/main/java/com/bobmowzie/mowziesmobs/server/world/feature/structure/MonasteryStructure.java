@@ -7,7 +7,7 @@ import com.mojang.serialization.MapCodec;
 import net.minecraft.core.BlockPos;
 import net.minecraft.core.Holder;
 import net.minecraft.core.registries.Registries;
-import net.minecraft.resources.ResourceLocation;
+import net.minecraft.resources.Identifier;
 import net.minecraft.world.level.levelgen.GenerationStep;
 import net.minecraft.world.level.levelgen.structure.Structure;
 import net.minecraft.world.level.levelgen.structure.StructureType;
@@ -61,8 +61,13 @@ public class MonasteryStructure extends MowzieStructure {
         Optional<Structure.GenerationStub> structurePiecesGenerator =
                 MowzieJigsawManager.addPieces(
                         newContext, // Used for JigsawPlacement to get all the proper behaviors done.
-                        Holder.direct(context.registryAccess().registryOrThrow(Registries.TEMPLATE_POOL)
-                                .get(ResourceLocation.fromNamespaceAndPath(MMCommon.MODID, "monastery/start_pool"))), blockpos, // Position of the structure. Y value is ignored if last parameter is set to true.
+                        // PORTING NOTE (1.21.1 -> 26.1.2): RegistryAccess#registryOrThrow -> lookupOrThrow (see
+                        // other files for the same rename), and Registry#get(Identifier) now returns
+                        // Optional<Holder.Reference<T>> instead of a raw nullable T (confirmed against real 26.1.2
+                        // Registry source) - getValue(Identifier) is the direct nullable-T replacement Holder.direct
+                        // needs here.
+                        Holder.direct(context.registryAccess().lookupOrThrow(Registries.TEMPLATE_POOL)
+                                .getValue(Identifier.fromNamespaceAndPath(MMCommon.MODID, "monastery/start_pool"))), blockpos, // Position of the structure. Y value is ignored if last parameter is set to true.
                         false,  // Special boundary adjustments for villages. It's... hard to explain. Keep this false and make your pieces not be partially intersecting.
                         // Either not intersecting or fully contained will make children pieces spawn just fine. It's easier that way.
                         true, // Place at heightmap (top land). Set this to false for structure to be place at the passed in blockpos's Y value instead.

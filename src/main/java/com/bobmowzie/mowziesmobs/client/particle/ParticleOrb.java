@@ -3,21 +3,22 @@ package com.bobmowzie.mowziesmobs.client.particle;
 import com.bobmowzie.mowziesmobs.client.model.tools.MathUtils;
 import com.bobmowzie.mowziesmobs.client.render.MMRenderType;
 import com.bobmowzie.mowziesmobs.server.message.NetworkHandler;
-import com.mojang.blaze3d.vertex.VertexConsumer;
 import com.mojang.serialization.Codec;
 import com.mojang.serialization.MapCodec;
 import com.mojang.serialization.codecs.RecordCodecBuilder;
 import net.minecraft.client.Camera;
 import net.minecraft.client.multiplayer.ClientLevel;
 import net.minecraft.client.particle.*;
+import net.minecraft.client.renderer.state.level.QuadParticleRenderState;
 import net.minecraft.core.particles.ParticleOptions;
 import net.minecraft.core.particles.ParticleType;
 import net.minecraft.network.RegistryFriendlyByteBuf;
 import net.minecraft.network.codec.ByteBufCodecs;
 import net.minecraft.network.codec.StreamCodec;
+import net.minecraft.util.RandomSource;
 import org.jetbrains.annotations.NotNull;
 
-public class ParticleOrb extends TextureSheetParticle {
+public class ParticleOrb extends SingleQuadParticle {
     private double targetX;
     private double targetY;
     private double targetZ;
@@ -31,7 +32,7 @@ public class ParticleOrb extends TextureSheetParticle {
     private double duration;
 
     public ParticleOrb(ClientLevel world, double x, double y, double z, double targetX, double targetZ) {
-        super(world, x, y, z);
+        super(world, x, y, z, null);
         this.targetX = targetX;
         this.targetZ = targetZ;
         quadSize = (4.5F + random.nextFloat() * 1.5F) * 0.1f;
@@ -55,7 +56,7 @@ public class ParticleOrb extends TextureSheetParticle {
     }
 
     public ParticleOrb(ClientLevel world, double x, double y, double z, double vx, double vy, double vz, double r, double g, double b, double scale, int duration) {
-        super(world, x, y, z);
+        super(world, x, y, z, null);
         quadSize = (float) scale * 0.1f;
         lifetime = duration;
         this.duration = duration;
@@ -67,13 +68,19 @@ public class ParticleOrb extends TextureSheetParticle {
     }
 
     @Override
-    public ParticleRenderType getRenderType() {
-        return MMRenderType.PARTICLE_SHEET_TRANSLUCENT_NO_DEPTH;
+    public ParticleRenderType getGroup() {
+        return ParticleRenderType.SINGLE_QUADS;
+    }
+
+    // TODO(out of scope): see MMRenderType.PARTICLE_LAYER_TRANSLUCENT_NO_DEPTH note in ParticleSparkle.java.
+    @Override
+    public SingleQuadParticle.Layer getLayer() {
+        return MMRenderType.PARTICLE_LAYER_TRANSLUCENT_NO_DEPTH;
     }
 
     @Override
-    public int getLightColor(float delta) {
-        return 240 | super.getLightColor(delta) & 0xFF0000;
+    public int getLightCoords(float delta) {
+        return 240 | super.getLightCoords(delta) & 0xFF0000;
     }
 
     @Override
@@ -120,15 +127,16 @@ public class ParticleOrb extends TextureSheetParticle {
         age++;
     }
 
+    // NB: render(VertexConsumer, Camera, float) no longer exists - see ParticleSparkle.java for context.
     @Override
-    public void render(VertexConsumer buffer, Camera renderInfo, float partialTicks) {
+    public void extract(QuadParticleRenderState particleTypeRenderState, Camera renderInfo, float partialTicks) {
         if (mode == 2) alpha = Math.max(1 - ((float)age + partialTicks)/(float)duration, 0.001f);
         else alpha = ((float)age + partialTicks)/(float)duration;
         rCol = red;
         gCol = green;
         bCol = blue;
 
-        super.render(buffer, renderInfo, partialTicks);
+        super.extract(particleTypeRenderState, renderInfo, partialTicks);
     }
 
     public static final class Provider implements ParticleProvider<Data> {
@@ -139,7 +147,7 @@ public class ParticleOrb extends TextureSheetParticle {
         }
 
         @Override
-        public Particle createParticle(Data data, @NotNull ClientLevel level, double x, double y, double z, double xSpeed, double ySpeed, double zSpeed) {
+        public Particle createParticle(Data data, @NotNull ClientLevel level, double x, double y, double z, double xSpeed, double ySpeed, double zSpeed, RandomSource random) {
             ParticleOrb particle = switch (data.mode()) {
                 case 0:
                     yield new ParticleOrb(level, x, y, z, data.targetX(), data.targetZ());

@@ -7,10 +7,10 @@ import com.bobmowzie.mowziesmobs.server.ability.*;
 import com.bobmowzie.mowziesmobs.server.potion.EffectHandler;
 import net.minecraft.world.entity.player.Player;
 import net.neoforged.neoforge.event.entity.player.PlayerInteractEvent;
-import software.bernie.geckolib.animatable.GeoEntity;
-import software.bernie.geckolib.animation.AnimationState;
-import software.bernie.geckolib.animation.PlayState;
-import software.bernie.geckolib.animation.RawAnimation;
+import com.geckolib.animatable.GeoEntity;
+import com.geckolib.animation.state.AnimationTest;
+import com.geckolib.animation.object.PlayState;
+import com.geckolib.animation.RawAnimation;
 
 public class BoulderRollAbility extends PlayerAbility {
     private static int START_UP = 15;
@@ -30,10 +30,10 @@ public class BoulderRollAbility extends PlayerAbility {
     }
 
     @Override
-    public <E extends GeoEntity> PlayState animationPredicate(AnimationState<E> e, GeckoPlayer.Perspective perspective) {
-        e.getController().transitionLength(0);
+    public <E extends GeoEntity> PlayState animationPredicate(AnimationTest<E> e, GeckoPlayer.Perspective perspective) {
+        e.controller().setTransitionTicks(0);
         if (perspective == GeckoPlayer.Perspective.THIRD_PERSON) {
-            e.getController().setAnimation(ROLL_ANIM);
+            e.controller().setAnimation(ROLL_ANIM);
         }
         return PlayState.CONTINUE;
     }
@@ -70,7 +70,7 @@ public class BoulderRollAbility extends PlayerAbility {
 
     @Override
     public boolean canUse() {
-        if (getUser() != null && !getUser().getInventory().getSelected().isEmpty()) return false;
+        if (getUser() != null && !getUser().getInventory().getSelectedItem().isEmpty()) return false;
         return getUser().hasEffect(EffectHandler.GEOMANCY) && getUser().isSprinting() && super.canUse();
     }
 

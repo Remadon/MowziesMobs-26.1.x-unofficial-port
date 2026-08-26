@@ -47,8 +47,8 @@ import net.minecraft.world.entity.ai.goal.RandomLookAroundGoal;
 import net.minecraft.world.entity.ai.goal.RandomStrollGoal;
 import net.minecraft.world.entity.ai.navigation.PathNavigation;
 import net.minecraft.world.entity.player.Player;
-import net.minecraft.world.entity.vehicle.AbstractMinecart;
-import net.minecraft.world.entity.vehicle.Minecart;
+import net.minecraft.world.entity.vehicle.minecart.AbstractMinecart;
+import net.minecraft.world.entity.vehicle.minecart.Minecart;
 import net.minecraft.world.item.enchantment.Enchantments;
 import net.minecraft.world.level.Level;
 import net.minecraft.world.level.LevelAccessor;
@@ -58,9 +58,13 @@ import net.minecraft.world.level.block.Blocks;
 import net.minecraft.world.level.block.SoundType;
 import net.minecraft.world.level.block.state.BlockState;
 import net.minecraft.world.level.pathfinder.PathType;
+import net.minecraft.world.level.storage.ValueInput;
+import net.minecraft.world.level.storage.ValueOutput;
 import net.minecraft.world.level.storage.loot.LootTable;
 import net.minecraft.world.phys.Vec3;
 import org.jetbrains.annotations.NotNull;
+
+import java.util.Optional;
 
 /**
  * Created by BobMowzie on 7/3/2018.
@@ -104,14 +108,14 @@ public class EntityGrottol extends MowzieLLibraryEntity {
     @Override
     protected void registerGoals() {
         super.registerGoals();
-        setPathfindingMalus(PathType.DANGER_OTHER, 1);
+        setPathfindingMalus(PathType.DAMAGING_IN_NEIGHBOR, 1);
         setPathfindingMalus(PathType.WATER, 3);
         setPathfindingMalus(PathType.WATER_BORDER, 3);
         setPathfindingMalus(PathType.LAVA, 1);
-        setPathfindingMalus(PathType.DANGER_FIRE, 1);
-        setPathfindingMalus(PathType.DAMAGE_FIRE, 1);
-        setPathfindingMalus(PathType.DANGER_OTHER, 1);
-        setPathfindingMalus(PathType.DAMAGE_OTHER, 1);
+        setPathfindingMalus(PathType.FIRE_IN_NEIGHBOR, 1);
+        setPathfindingMalus(PathType.FIRE, 1);
+        setPathfindingMalus(PathType.DAMAGING_IN_NEIGHBOR, 1);
+        setPathfindingMalus(PathType.DAMAGING, 1);
         goalSelector.addGoal(3, new FloatGoal(this));
         goalSelector.addGoal(4, new RandomStrollGoal(this, 0.3));
         goalSelector.addGoal(1, new EntityAIGrottolFindMinecart(this));
@@ -214,7 +218,7 @@ public class EntityGrottol extends MowzieLLibraryEntity {
     }
 
     @Override
-    public boolean checkSpawnRules(LevelAccessor world, MobSpawnType reason) {
+    public boolean checkSpawnRules(LevelAccessor world, EntitySpawnReason reason) {
         return getEntitiesNearby(EntityGrottol.class, 20, 20, 20, 20).isEmpty() && super.checkSpawnRules(world, reason);
     }
 
@@ -222,8 +226,8 @@ public class EntityGrottol extends MowzieLLibraryEntity {
     public boolean skipAttackInteraction(Entity entity) {
         if (entity instanceof Player player) {
             if (EnchantmentUtils.getLevel(Enchantments.SILK_TOUCH, player.level(), player.getMainHandItem()) > 0) {
-                if (!level().isClientSide && isAlive()) {
-                    spawnAtLocation(ItemHandler.CAPTURED_GROTTOL.get().create(this), 0.0F);
+                if (level() instanceof ServerLevel serverLevel && isAlive()) {
+                    spawnAtLocation(serverLevel, ItemHandler.CAPTURED_GROTTOL.get().create(this), 0.0F);
                     BlockState state = Blocks.STONE.defaultBlockState();
                     SoundType sound = state.getBlock().getSoundType(state, level(), this.blockPosition(), entity);
                     level().playSound(
@@ -252,7 +256,7 @@ public class EntityGrottol extends MowzieLLibraryEntity {
     }
 
     @Override
-    public boolean hurt(DamageSource source, float amount) {
+    public boolean hurtServer(ServerLevel level, DamageSource source, float amount) {
         Entity entity = source.getEntity();
         if (entity instanceof Player player && !source.is(DamageTypeTags.IS_PROJECTILE)) {
             if (player.getMainHandItem().isCorrectToolForDrops(Blocks.DIAMOND_ORE.defaultBlockState()) || player.getMainHandItem().is(MMItemTags.CAN_HIT_GROTTOL)) {
@@ -262,7 +266,7 @@ public class EntityGrottol extends MowzieLLibraryEntity {
                 } else {
                     death = EnumDeathType.PICKAXE;
                 }
-                return super.hurt(source, getHealth());
+                return super.hurtServer(level, source, getHealth());
             } else {
                 if (timeSinceDeflectSound >= 5) {
                     timeSinceDeflectSound = 0;
@@ -274,11 +278,11 @@ public class EntityGrottol extends MowzieLLibraryEntity {
         else if (entity instanceof Mob) {
             return false;
         }
-        return super.hurt(source, amount);
+        return super.hurtServer(level, source, amount);
     }
 
     private static BlockState findGroundBelow(Level world, BlockPos pos) {
-        while (world.getBlockState(pos).isAir() && pos.getY() > world.getMinBuildHeight()) {
+        while (world.getBlockState(pos).isAir() && pos.getY() > world.getMinY()) {
             pos = pos.below();
         }
         return world.getBlockState(pos);
@@ -287,7 +291,7 @@ public class EntityGrottol extends MowzieLLibraryEntity {
     @Override
     public void tick() {
         super.tick();
-        if (!level().isClientSide) {
+        if (!level().isClientSide()) {
             Entity e = getVehicle();
             if (isMinecart(e)) {
                 AbstractMinecart minecart = (AbstractMinecart) e;
@@ -308,7 +312,7 @@ public class EntityGrottol extends MowzieLLibraryEntity {
 //        if (ticksExisted == 1) System.out.println("Grottle at " + getPosition());
 
         //Sparkle particles
-        if (level().isClientSide && isAlive() && random.nextInt(15) == 0) {
+        if (level().isClientSide() && isAlive() && random.nextInt(15) == 0) {
             double x = getX() + 0.5f * (2 * random.nextFloat() - 1f);
             double y = getY() + 0.8f + 0.3f * (2 * random.nextFloat() - 1f);
             double z = getZ() + 0.5f * (2 * random.nextFloat() - 1f);
@@ -336,13 +340,13 @@ public class EntityGrottol extends MowzieLLibraryEntity {
         if (timeSinceDeflectSound < 5) timeSinceDeflectSound++;
 
         // AI Task
-        if (!level().isClientSide && fleeTime >= 55 && getAnimation() == NO_ANIMATION && !isNoAi() && !hasEffect(EffectHandler.FROZEN)) {
+        if (!level().isClientSide() && fleeTime >= 55 && getAnimation() == NO_ANIMATION && !isNoAi() && !hasEffect(EffectHandler.FROZEN)) {
             BlockState blockBeneath = level().getBlockState(blockPosition().below());
             if (isBlockDiggable(blockBeneath)) {
                 AnimationHandler.INSTANCE.sendAnimationMessage(this, BURROW_ANIMATION);
             }
         }
-        if (!level().isClientSide && getAnimation() == BURROW_ANIMATION) {
+        if (!level().isClientSide() && getAnimation() == BURROW_ANIMATION) {
             if (getAnimationTick() % 4 == 3) {
                 playSound(MMSounds.ENTITY_GROTTOL_BURROW.get(), 1, 0.8f + random.nextFloat() * 0.4f);
                 BlockState blockBeneath = level().getBlockState(blockPosition().below());
@@ -405,7 +409,7 @@ public class EntityGrottol extends MowzieLLibraryEntity {
     }
 
     @Override
-    public boolean startRiding(Entity entity, boolean force) {
+    public boolean startRiding(Entity entity, boolean force, boolean sendEventAndTriggers) {
         /*if (isMinecart(entity)) {
                 AbstractMinecartEntity minecart = (AbstractMinecartEntity) entity;
                 if (minecart.getDisplayTile().getBlock() != BlockHandler.GROTTOL.get()) {
@@ -413,7 +417,7 @@ public class EntityGrottol extends MowzieLLibraryEntity {
                     minecart.setDisplayTileOffset(minecart.getDefaultDisplayTileOffset());
                 }
             }*/
-        return super.startRiding(entity, force);
+        return super.startRiding(entity, force, sendEventAndTriggers);
     }
 
     @Override
@@ -451,11 +455,6 @@ public class EntityGrottol extends MowzieLLibraryEntity {
     }
 
     @Override
-    protected ResourceKey<LootTable> getDefaultLootTable() {
-        return LootTableHandler.GROTTOL;
-    }
-
-    @Override
     protected ConfigHandler.CombatConfig getCombatConfig() {
         return ConfigHandler.COMMON.MOBS.GROTTOL.combatConfig;
     }
@@ -483,22 +482,22 @@ public class EntityGrottol extends MowzieLLibraryEntity {
     }
 
     @Override
-    public void addAdditionalSaveData(CompoundTag compound) {
-        super.addAdditionalSaveData(compound);
-        compound.putBoolean("deepslate", this.getDeepslate());
-        compound.putBoolean("blackpink", this.getBlackpink());
+    public void addAdditionalSaveData(ValueOutput output) {
+        super.addAdditionalSaveData(output);
+        output.putBoolean("deepslate", this.getDeepslate());
+        output.putBoolean("blackpink", this.getBlackpink());
     }
 
     @Override
-    public void readAdditionalSaveData(CompoundTag compound) {
-        super.readAdditionalSaveData(compound);
-        setDeepslate(compound.getBoolean("deepslate"));
-        setBlackpink(compound.getBoolean("blackpink"));
+    public void readAdditionalSaveData(ValueInput input) {
+        super.readAdditionalSaveData(input);
+        setDeepslate(input.getBooleanOr("deepslate", false));
+        setBlackpink(input.getBooleanOr("blackpink", false));
     }
 
     @Override
-    public SpawnGroupData finalizeSpawn(ServerLevelAccessor worldIn, DifficultyInstance difficultyIn, MobSpawnType reason, SpawnGroupData spawnDataIn) {
-        if (getY() < 8 && reason != MobSpawnType.MOB_SUMMONED) setDeepslate(true);
+    public SpawnGroupData finalizeSpawn(ServerLevelAccessor worldIn, DifficultyInstance difficultyIn, EntitySpawnReason reason, SpawnGroupData spawnDataIn) {
+        if (getY() < 8 && reason != EntitySpawnReason.MOB_SUMMONED) setDeepslate(true);
         return super.finalizeSpawn(worldIn, difficultyIn, reason, spawnDataIn);
     }
 }

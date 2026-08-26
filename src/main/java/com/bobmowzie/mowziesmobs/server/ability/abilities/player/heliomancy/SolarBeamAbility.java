@@ -11,7 +11,7 @@ import net.minecraft.world.effect.MobEffects;
 import net.minecraft.world.entity.LivingEntity;
 import net.minecraft.world.entity.player.Player;
 import net.minecraft.world.item.ItemStack;
-import software.bernie.geckolib.animation.RawAnimation;
+import com.geckolib.animation.RawAnimation;
 
 public class SolarBeamAbility extends HeliomancyAbilityBase {
     protected EntitySolarBeam solarBeam;
@@ -35,7 +35,7 @@ public class SolarBeamAbility extends HeliomancyAbilityBase {
         if (!getUser().level().isClientSide()) {
             solarBeam.setHasPlayer(true);
             user.level().addFreshEntity(solarBeam);
-            user.addEffect(new MobEffectInstance(MobEffects.MOVEMENT_SLOWDOWN, 80, 2, false, false));
+            user.addEffect(new MobEffectInstance(MobEffects.SLOWNESS, 80, 2, false, false));
         }
         else {
             heldItemMainHandVisualOverride = ItemStack.EMPTY;

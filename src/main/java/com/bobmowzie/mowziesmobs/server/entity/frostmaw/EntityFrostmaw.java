@@ -23,6 +23,7 @@ import com.bobmowzie.mowziesmobs.server.potion.EffectHandler;
 import com.bobmowzie.mowziesmobs.server.sound.MMSounds;
 import com.ilexiconn.llibrary.server.animation.Animation;
 import com.ilexiconn.llibrary.server.animation.AnimationHandler;
+import net.minecraft.core.component.DataComponents;
 import net.minecraft.nbt.CompoundTag;
 import net.minecraft.network.syncher.EntityDataAccessor;
 import net.minecraft.network.syncher.EntityDataSerializers;
@@ -45,15 +46,19 @@ import net.minecraft.world.entity.ai.goal.*;
 import net.minecraft.world.entity.ai.goal.target.NearestAttackableTargetGoal;
 import net.minecraft.world.entity.ai.navigation.PathNavigation;
 import net.minecraft.world.entity.monster.Enemy;
-import net.minecraft.world.entity.npc.Villager;
+import net.minecraft.world.entity.npc.villager.Villager;
 import net.minecraft.world.entity.player.Inventory;
 import net.minecraft.world.entity.player.Player;
-import net.minecraft.world.entity.projectile.AbstractArrow;
+import net.minecraft.world.entity.projectile.arrow.AbstractArrow;
 import net.minecraft.world.item.ItemStack;
+import net.minecraft.world.item.component.BlocksAttacks;
 import net.minecraft.world.level.Level;
 import net.minecraft.world.level.LevelAccessor;
 import net.minecraft.world.level.ServerLevelAccessor;
+import net.minecraft.server.level.ServerLevel;
 import net.minecraft.world.level.material.PushReaction;
+import net.minecraft.world.level.storage.ValueInput;
+import net.minecraft.world.level.storage.ValueOutput;
 import net.minecraft.world.level.storage.loot.LootTable;
 import net.minecraft.world.phys.AABB;
 import net.minecraft.world.phys.Vec3;
@@ -63,6 +68,7 @@ import org.jetbrains.annotations.NotNull;
 import javax.annotation.Nullable;
 import java.util.EnumSet;
 import java.util.List;
+import java.util.Optional;
 
 /**
  * Created by BobMowzie on 5/8/2017.
@@ -116,7 +122,7 @@ public class EntityFrostmaw extends MowzieLLibraryEntity implements Enemy {
         super(type, world);
         frame += random.nextInt(50);
         legSolver = new LegSolverQuadruped(1f, 2f, -1, 1.5f);
-        if (world.isClientSide)
+        if (world.isClientSide())
             socketPosArray = new Vec3[] {new Vec3(0, 0, 0), new Vec3(0, 0, 0), new Vec3(0, 0, 0)};
         active = false;
         playsHurtAnimation = false;
@@ -165,7 +171,19 @@ public class EntityFrostmaw extends MowzieLLibraryEntity implements Enemy {
             protected void onAttack(LivingEntity entityTarget, float damageMultiplier, float applyKnockbackMultiplier) {
                 super.onAttack(entityTarget, damageMultiplier, applyKnockbackMultiplier);
                 if (getAnimationTick() == 21 && entityTarget instanceof Player player) {
-                    if (player.isBlocking()) player.disableShield();
+                    // NOTE 26.1.2 port: LivingEntity#disableShield() was removed; shield disabling is now data-driven
+                    // via the item's BlocksAttacks component (see Player#blockUsingItem / LivingEntity#hurtServer).
+                    // Frostmaw attacks bare-handed (no weapon item), so the normal attacker-driven
+                    // getSecondsToDisableBlocking() path never triggers a disable on its own - replicate the old
+                    // unconditional "always disable the target's shield" behavior by invoking BlocksAttacks#disable
+                    // directly here.
+                    if (player.isBlocking() && level() instanceof ServerLevel serverLevel) {
+                        ItemStack blockingWith = player.getItemBlockingWith();
+                        BlocksAttacks blocksAttacks = blockingWith != null ? blockingWith.get(DataComponents.BLOCKS_ATTACKS) : null;
+                        if (blocksAttacks != null) {
+                            blocksAttacks.disable(serverLevel, player, 5.0F, blockingWith);
+                        }
+                    }
                 }
             }
         });
@@ -337,19 +355,19 @@ public class EntityFrostmaw extends MowzieLLibraryEntity implements Enemy {
                     float radius = 4;
                     float slamPosX = (float) (getX() + radius * Math.cos(Math.toRadians(getYRot() + 90)));
                     float slamPosZ = (float) (getZ() + radius * Math.sin(Math.toRadians(getYRot() + 90)));
-                    if (level().isClientSide) level().addParticle(new ParticleRing.Data(0f, (float)Math.PI/2f, 17, 1f, 1f, 1f, 1f, 60, false, ParticleRing.EnumRingBehavior.GROW), slamPosX, getY() + 0.2f, slamPosZ, 0, 0, 0);
+                    if (level().isClientSide()) level().addParticle(new ParticleRing.Data(0f, (float)Math.PI/2f, 17, 1f, 1f, 1f, 1f, 60, false, ParticleRing.EnumRingBehavior.GROW), slamPosX, getY() + 0.2f, slamPosZ, 0, 0, 0);
                     AABB hitBox = new AABB(slamPosX - 0.5f, getY() - 0.5f,  slamPosZ - 0.5f,slamPosX + 0.5f, getY() + 0.5f, slamPosZ + 0.5f).inflate(3, 3, 3);
                     List<LivingEntity> entitiesHit = level().getEntitiesOfClass(LivingEntity.class, hitBox);
                     for (LivingEntity entity: entitiesHit) {
                         if (entity != this && entity.position().distanceToSqr(slamPosX, getY(), slamPosZ) <= 9) {
                             doHurtTarget(entity, 4f, 1);
-                            if (entity.isBlocking()) entity.getUseItem().hurtAndBreak(400, entity, LivingEntity.getSlotForHand(entity.getUsedItemHand()));
+                            if (entity.isBlocking()) entity.getUseItem().hurtAndBreak(400, entity, entity.getUsedItemHand());
                         }
                     }
                     EntityCameraShake.cameraShake(level(), new Vec3(slamPosX, getY(), slamPosZ), 30, 0.1f, 0, 20);
                 }
             }
-            if (getAnimation() == DODGE_ANIMATION && !level().isClientSide) {
+            if (getAnimation() == DODGE_ANIMATION && !level().isClientSide()) {
                 getNavigation().stop();
                 if (getAnimationTick() == 2) {
                     dodgeYaw = (float) Math.toRadians(targetAngle + 90 + random.nextFloat() * 150 - 75);
@@ -374,11 +392,11 @@ public class EntityFrostmaw extends MowzieLLibraryEntity implements Enemy {
                 mouthPos = mouthPos.add(new Vec3(0, 0, 1).xRot((float)Math.toRadians(-getXRot())).yRot((float)Math.toRadians(-yHeadRot)));
                 if (getAnimationTick() == 13) {
                     iceBreath = new EntityIceBreath(EntityHandler.ICE_BREATH.get(), level(), this);
-                    iceBreath.absMoveTo(mouthPos.x, mouthPos.y, mouthPos.z, yHeadRot, getXRot() + 10);
-                    if (!level().isClientSide) level().addFreshEntity(iceBreath);
+                    iceBreath.snapTo(mouthPos.x, mouthPos.y, mouthPos.z, yHeadRot, getXRot() + 10);
+                    if (!level().isClientSide()) level().addFreshEntity(iceBreath);
                 }
                 if (iceBreath != null)
-                    iceBreath.absMoveTo(mouthPos.x, mouthPos.y, mouthPos.z, yHeadRot, getXRot() + 10);
+                    iceBreath.snapTo(mouthPos.x, mouthPos.y, mouthPos.z, yHeadRot, getXRot() + 10);
             }
 
             if (getAnimation() == ICE_BALL_ANIMATION) {
@@ -387,7 +405,7 @@ public class EntityFrostmaw extends MowzieLLibraryEntity implements Enemy {
                 projectilePos = projectilePos.yRot((float)Math.toRadians(-getYRot()- 90));
                 projectilePos = projectilePos.add(position());
                 projectilePos = projectilePos.add(new Vec3(0, 0, 1).xRot((float)Math.toRadians(-getXRot())).yRot((float)Math.toRadians(-yHeadRot)));
-                if (level().isClientSide) {
+                if (level().isClientSide()) {
                     Vec3 mouthPos = socketPosArray[2];
                     if (getAnimationTick() < 12) {
                         for (int i = 0; i < 6; i++) {
@@ -413,7 +431,7 @@ public class EntityFrostmaw extends MowzieLLibraryEntity implements Enemy {
                     playSound(MMSounds.ENTITY_FROSTMAW_ICEBALL_SHOOT.get(), 2, 0.7f);
 
                     EntityIceBall iceBall = new EntityIceBall(EntityHandler.ICE_BALL.get(), level(), this);
-                    iceBall.absMoveTo(projectilePos.x, projectilePos.y, projectilePos.z, yHeadRot, getXRot() + 10);
+                    iceBall.snapTo(projectilePos.x, projectilePos.y, projectilePos.z, yHeadRot, getXRot() + 10);
                     float projSpeed = 1.6f;
                     if (getTarget() != null) {
                         float ticksUntilHit = targetDistance / projSpeed;
@@ -428,7 +446,7 @@ public class EntityFrostmaw extends MowzieLLibraryEntity implements Enemy {
                     else {
                         iceBall.shoot(getLookAngle().x, getLookAngle().y, getLookAngle().z, projSpeed, 0);
                     }
-                    if (!level().isClientSide) level().addFreshEntity(iceBall);
+                    if (!level().isClientSide()) level().addFreshEntity(iceBall);
                 }
             }
 
@@ -436,7 +454,7 @@ public class EntityFrostmaw extends MowzieLLibraryEntity implements Enemy {
 
             if (fallDistance > 0.2 && !onGround() && getLastDamageSource() != null && !getLastDamageSource().is(DamageTypes.LAVA)) shouldPlayLandAnimation = true;
             if (onGround() && shouldPlayLandAnimation && getAnimation() != DODGE_ANIMATION) {
-                if (!level().isClientSide && getAnimation() == NO_ANIMATION) {
+                if (!level().isClientSide() && getAnimation() == NO_ANIMATION) {
                     AnimationHandler.INSTANCE.sendAnimationMessage(this, LAND_ANIMATION);
                 }
                 shouldPlayLandAnimation = false;
@@ -495,7 +513,7 @@ public class EntityFrostmaw extends MowzieLLibraryEntity implements Enemy {
                     iceBallCooldown = ICE_BALL_COOLDOWN;
                 }
             }
-            else if (!level().isClientSide) {
+            else if (!level().isClientSide()) {
                 if (!isAlwaysActive()) {
                     timeWithoutTarget++;
                     if (timeWithoutTarget > 1200 || level().getDifficulty() == Difficulty.PEACEFUL) {
@@ -512,7 +530,7 @@ public class EntityFrostmaw extends MowzieLLibraryEntity implements Enemy {
             getNavigation().stop();
             setDeltaMovement(0, getDeltaMovement().y, 0);
             yBodyRot = yBodyRotO;
-            if (!level().isClientSide && getAnimation() != ACTIVATE_ANIMATION) {
+            if (!level().isClientSide() && getAnimation() != ACTIVATE_ANIMATION) {
                 if (ConfigHandler.COMMON.MOBS.FROSTMAW.healsOutOfBattle.get()) heal(0.3f);
             }
             if (getTarget() != null && getTarget().hasEffect(MobEffects.INVISIBILITY)) {
@@ -561,7 +579,7 @@ public class EntityFrostmaw extends MowzieLLibraryEntity implements Enemy {
             }
         }
 
-        if (level().isClientSide) {
+        if (level().isClientSide()) {
             if ((getAnimation() == SWIPE_ANIMATION || getAnimation() == SWIPE_TWICE_ANIMATION) && getAnimationTick() == 1) {
                 swingWhichArm = random.nextBoolean();
             }
@@ -604,7 +622,7 @@ public class EntityFrostmaw extends MowzieLLibraryEntity implements Enemy {
                 double distance = distanceTo(entity) - 4;
                 entity.setDeltaMovement(entity.getDeltaMovement().add(Math.min(1 / (distance * distance), 1) * -1 * Math.cos(angle), 0, Math.min(1 / (distance * distance), 1) * -1 * Math.sin(angle)));
             }
-            if (getAnimationTick() % 12 == 0 && level().isClientSide) {
+            if (getAnimationTick() % 12 == 0 && level().isClientSide()) {
                 int particleCount = 15;
                 for (int i = 1; i <= particleCount; i++) {
                     double yaw = i * 360.f / particleCount;
@@ -625,7 +643,7 @@ public class EntityFrostmaw extends MowzieLLibraryEntity implements Enemy {
     }
 
     private static boolean isInventoryFull(Inventory inventory) {
-        for(ItemStack itemstack : inventory.items) {
+        for(ItemStack itemstack : inventory.getNonEquipmentItems()) {
             if (itemstack.isEmpty()) {
                 return false;
             }
@@ -634,7 +652,7 @@ public class EntityFrostmaw extends MowzieLLibraryEntity implements Enemy {
     }
 
     @Override
-    public boolean checkSpawnRules(LevelAccessor world, MobSpawnType reason) {
+    public boolean checkSpawnRules(LevelAccessor world, EntitySpawnReason reason) {
         List<LivingEntity> nearby = getEntityLivingBaseNearby(100, 100, 100, 100);
         for (LivingEntity nearbyEntity : nearby) {
             if (nearbyEntity instanceof EntityFrostmaw || nearbyEntity instanceof Villager) {
@@ -650,13 +668,13 @@ public class EntityFrostmaw extends MowzieLLibraryEntity implements Enemy {
     }
 
     @Override
-    public @Nullable SpawnGroupData finalizeSpawn(ServerLevelAccessor world, DifficultyInstance difficulty, MobSpawnType reason, @Nullable SpawnGroupData livingData) {
+    public @Nullable SpawnGroupData finalizeSpawn(ServerLevelAccessor world, DifficultyInstance difficulty, EntitySpawnReason reason, @Nullable SpawnGroupData livingData) {
         setHasCrystal(true);
         return super.finalizeSpawn(world, difficulty, reason, livingData);
     }
 
     private void spawnSwipeParticles() {
-        if (level().isClientSide && getHasCrystal()) {
+        if (level().isClientSide() && getHasCrystal()) {
             double motionX = getDeltaMovement().x();
             double motionY = getDeltaMovement().y();
             double motionZ = getDeltaMovement().z();
@@ -766,7 +784,7 @@ public class EntityFrostmaw extends MowzieLLibraryEntity implements Enemy {
     }
 
     @Override
-    public boolean hurt(DamageSource source, float damage) {
+    public boolean hurtServer(ServerLevel level, DamageSource source, float damage) {
         if (source.is(DamageTypeTags.IS_FALL)) return false;
         if (source.is(DamageTypes.LAVA) && getAnimation() == NO_ANIMATION) {
             AnimationHandler.INSTANCE.sendAnimationMessage(this, DODGE_ANIMATION);
@@ -790,7 +808,7 @@ public class EntityFrostmaw extends MowzieLLibraryEntity implements Enemy {
             return false;
         }
 
-        boolean attack = super.hurt(source, damage);
+        boolean attack = super.hurtServer(level, source, damage);
 
         if (attack) {
             shouldDodgeMeasure += damage;
@@ -859,21 +877,19 @@ public class EntityFrostmaw extends MowzieLLibraryEntity implements Enemy {
     }
 
     @Override
-    public void readAdditionalSaveData(CompoundTag compound) {
-        super.readAdditionalSaveData(compound);
-        if (compound.contains("has_crystal")) {
-            setHasCrystal(compound.getBoolean("has_crystal"));
-        }
-        setActive(compound.getBoolean("active"));
-        setAlwaysActive(compound.getBoolean("alwaysActive"));
+    public void readAdditionalSaveData(ValueInput input) {
+        super.readAdditionalSaveData(input);
+        setHasCrystal(input.getBooleanOr("has_crystal", true));
+        setActive(input.getBooleanOr("active", false));
+        setAlwaysActive(input.getBooleanOr("alwaysActive", false));
     }
 
     @Override
-    public void addAdditionalSaveData(CompoundTag compound) {
-        super.addAdditionalSaveData(compound);
-        compound.putBoolean("has_crystal", getHasCrystal());
-        compound.putBoolean("active", getActive());
-        compound.putBoolean("alwaysActive", isAlwaysActive());
+    public void addAdditionalSaveData(ValueOutput output) {
+        super.addAdditionalSaveData(output);
+        output.putBoolean("has_crystal", getHasCrystal());
+        output.putBoolean("active", getActive());
+        output.putBoolean("alwaysActive", isAlwaysActive());
     }
 
     @Override
@@ -889,11 +905,6 @@ public class EntityFrostmaw extends MowzieLLibraryEntity implements Enemy {
     @Override
     public BossEvent.BossBarColor bossBarColor() {
         return BossEvent.BossBarColor.WHITE;
-    }
-
-    @Override
-    protected ResourceKey<LootTable> getDefaultLootTable() {
-        return LootTableHandler.FROSTMAW;
     }
 
     @Override

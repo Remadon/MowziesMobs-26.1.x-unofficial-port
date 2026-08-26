@@ -198,8 +198,9 @@ public class GeckoDynamicChain {
             pOrig = new Vec3[chainOrig.length];
             renderPos = new Vec3[chainOrig.length];
             prevRenderPos = new Vec3[chainOrig.length];
+            float partialTick = Minecraft.getInstance().getDeltaTracker().getGameTimeDeltaPartialTick(false);
             for (int i = 0; i < chainOrig.length; i++) {
-                Vector3d pos = chainOrig[i].getWorldPosition();
+                Vector3d pos = chainOrig[i].getWorldPosition(entity, partialTick);
                 pOrig[i] = new Vec3(pos.x, pos.y, pos.z);
                 p[i] = new Vec3(pos.x, pos.y, pos.z);
                 p0[i] = new Vec3(pos.x, pos.y, pos.z);
@@ -235,14 +236,15 @@ public class GeckoDynamicChain {
             return;
         }
 
-        float currentTime = entity.tickCount + Minecraft.getInstance().getTimer().getGameTimeDeltaPartialTick(false);
+        float partialTick = Minecraft.getInstance().getDeltaTracker().getGameTimeDeltaPartialTick(false);
+        float currentTime = entity.tickCount + partialTick;
 
         for (int i = 0; i < chainOrig.length; i++) {
             prevRenderPos[i] = new Vec3(renderPos[i].x, renderPos[i].y, renderPos[i].z);
         }
 
         for (int i = 0; i < chainOrig.length; i++) {
-            Vector3d p = chainOrig[i].getWorldPosition();
+            Vector3d p = chainOrig[i].getWorldPosition(entity, partialTick);
             pOrig[i] = new Vec3(p.x, p.y, p.z);
             if (i > 0) {
                 d[i] = (float) pOrig[i].distanceTo(pOrig[i - 1]);

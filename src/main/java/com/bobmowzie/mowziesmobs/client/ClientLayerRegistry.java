@@ -7,9 +7,9 @@ import com.bobmowzie.mowziesmobs.client.render.entity.player.GeckoPlayer;
 import com.bobmowzie.mowziesmobs.server.entity.MowzieEntity;
 import com.google.common.collect.ImmutableList;
 import net.minecraft.client.renderer.entity.LivingEntityRenderer;
-import net.minecraft.client.resources.PlayerSkin;
 import net.minecraft.world.entity.EntityType;
 import net.minecraft.world.entity.LivingEntity;
+import net.minecraft.world.entity.player.PlayerModelType;
 import net.neoforged.bus.api.SubscribeEvent;
 import net.neoforged.neoforge.client.event.EntityRenderersEvent;
 
@@ -23,8 +23,14 @@ public class ClientLayerRegistry {
         List<EntityType<? extends LivingEntity>> entityTypes = ImmutableList.copyOf(MMCommon.getLivingEntityTypes().collect(Collectors.toList()));
         entityTypes.forEach((entityType -> addLayerIfApplicable(entityType, event)));
 
-        for (PlayerSkin.Model skin : event.getSkins()){
-            if (event.getSkin(skin) instanceof LivingEntityRenderer<?, ?> renderer) {
+        // PORTING NOTE (1.21.1 -> 26.1.2): PlayerSkin.Model -> PlayerModelType (moved package too:
+        // net.minecraft.client.resources.PlayerSkin -> net.minecraft.world.entity.player.PlayerSkin), and
+        // AddLayers#getSkin(...) was renamed to getPlayerRenderer(...) returning an AvatarRenderer<AbstractClientPlayer>
+        // (which is itself a LivingEntityRenderer<AbstractClientPlayer, AvatarRenderState, PlayerModel> subclass, so
+        // addLayer(...) still works the same way once assigned to a LivingEntityRenderer<?, ?, ?> variable).
+        for (PlayerModelType skin : event.getSkins()) {
+            LivingEntityRenderer<?, ?, ?> renderer = event.getPlayerRenderer(skin);
+            if (renderer != null) {
                 renderer.addLayer(new FrozenRenderHandler.LayerFrozen(renderer));
                 renderer.addLayer(new SunblockLayer(renderer));
             }
@@ -34,11 +40,11 @@ public class ClientLayerRegistry {
     }
 
     private static void addLayerIfApplicable(EntityType<? extends LivingEntity> entityType, EntityRenderersEvent.AddLayers event) {
-        LivingEntityRenderer<?, ?> renderer = null;
+        LivingEntityRenderer<?, ?, ?> renderer = null;
 
         if (entityType != EntityType.ENDER_DRAGON) {
             try {
-                if (event.getRenderer(entityType) instanceof LivingEntityRenderer<?,?> livingRenderer) {
+                if (event.getRenderer(entityType) instanceof LivingEntityRenderer<?,?,?> livingRenderer) {
                     renderer = livingRenderer;
                 }
             } catch (Exception e) {

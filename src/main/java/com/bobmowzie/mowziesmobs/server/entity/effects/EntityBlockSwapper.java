@@ -5,6 +5,7 @@ import com.bobmowzie.mowziesmobs.server.entity.ILinkedEntity;
 import com.bobmowzie.mowziesmobs.server.entity.sculptor.EntitySculptor;
 import com.bobmowzie.mowziesmobs.server.message.MessageLinkEntities;
 import net.minecraft.core.BlockPos;
+import net.minecraft.core.UUIDUtil;
 import net.minecraft.core.registries.Registries;
 import net.minecraft.nbt.CompoundTag;
 import net.minecraft.nbt.NbtUtils;
@@ -25,6 +26,8 @@ import net.minecraft.world.entity.player.Player;
 import net.minecraft.world.level.Level;
 import net.minecraft.world.level.block.Blocks;
 import net.minecraft.world.level.block.state.BlockState;
+import net.minecraft.world.level.storage.ValueInput;
+import net.minecraft.world.level.storage.ValueOutput;
 import net.minecraft.world.phys.AABB;
 import net.minecraft.world.phys.Vec2;
 import net.minecraft.world.phys.Vec3;
@@ -58,7 +61,7 @@ public class EntityBlockSwapper extends Entity {
         setRestoreTime(duration);
         this.breakParticlesEnd = breakParticlesEnd;
         setPos(pos.getX() + 0.5, pos.getY(), pos.getZ() + 0.5);
-        if (!world.isClientSide) {
+        if (!world.isClientSide()) {
             setOrigBlock(world.getBlockState(pos));
             if (breakParticlesStart) world.destroyBlock(pos, false);
             world.setBlock(pos, newBlock, 19);
@@ -77,8 +80,16 @@ public class EntityBlockSwapper extends Entity {
         }
     }
 
+    @Override
+    public boolean hurtServer(ServerLevel level, net.minecraft.world.damagesource.DamageSource source, float amount) {
+        // NOTE 26.1.2 port: see EntityMagicEffect#hurtServer for context - Entity#hurt(DamageSource,float) used to
+        // be an inert no-op default pre-port; this class extends Entity directly (not EntityMagicEffect) so needs
+        // its own override reproducing that same "can't be hurt" default.
+        return false;
+    }
+
     public static void swapBlock(Level world, BlockPos pos, BlockState newBlock, int duration, boolean breakParticlesStart, boolean breakParticlesEnd) {
-        if (!world.isClientSide) {
+        if (!world.isClientSide()) {
             EntityBlockSwapper swapper = new EntityBlockSwapper(EntityHandler.BLOCK_SWAPPER.get(), world, pos, newBlock, duration, breakParticlesStart, breakParticlesEnd);
             world.addFreshEntity(swapper);
         }
@@ -129,7 +140,7 @@ public class EntityBlockSwapper extends Entity {
 
     public void restoreBlock() {
         List<EntityBlockSwapper> swappers = level().getEntitiesOfClass(EntityBlockSwapper.class, getBoundingBox());
-        if (!level().isClientSide) {
+        if (!level().isClientSide()) {
             boolean canReplace = true;
             for (EntityBlockSwapper swapper : swappers) {
                 if (swapper == this) continue;
@@ -157,33 +168,29 @@ public class EntityBlockSwapper extends Entity {
     }
 
     @Override
-    public void addAdditionalSaveData(CompoundTag compound) {
+    public void addAdditionalSaveData(ValueOutput output) {
         BlockState blockState = getEntityData().get(ORIG_BLOCK_STATE);
-        compound.put("block", NbtUtils.writeBlockState(blockState));
-        compound.putInt("restoreTime", getRestoreTime());
-        compound.putInt("storePosX", getStorePos().getX());
-        compound.putInt("storePosY", getStorePos().getY());
-        compound.putInt("storePosZ", getStorePos().getZ());
+        output.store("block", BlockState.CODEC, blockState);
+        output.putInt("restoreTime", getRestoreTime());
+        output.putInt("storePosX", getStorePos().getX());
+        output.putInt("storePosY", getStorePos().getY());
+        output.putInt("storePosZ", getStorePos().getZ());
     }
 
     @Override
-    public void readAdditionalSaveData(CompoundTag compound) {
-        Tag blockNBT = compound.get("block");
-        if (blockNBT != null) {
-            BlockState blockState = NbtUtils.readBlockState(this.level().holderLookup(Registries.BLOCK), (CompoundTag) blockNBT);
-            setOrigBlock(blockState);
-        }
-        setRestoreTime(compound.getInt("restoreTime"));
+    public void readAdditionalSaveData(ValueInput input) {
+        input.read("block", BlockState.CODEC).ifPresent(this::setOrigBlock);
+        setRestoreTime(input.getIntOr("restoreTime", 0));
         setStorePos(new BlockPos(
-                compound.getInt("storePosX"),
-                compound.getInt("storePosY"),
-                compound.getInt("storePosZ")
+                input.getIntOr("storePosX", 0),
+                input.getIntOr("storePosY", 0),
+                input.getIntOr("storePosZ", 0)
         ));
     }
 
     public static class EntityBlockSwapperTunneling extends EntityBlockSwapper implements ILinkedEntity {
         private LivingEntity cachedTunneler;
-        private static final EntityDataAccessor<Optional<UUID>> TUNNELER = SynchedEntityData.defineId(EntityBlockSwapper.EntityBlockSwapperTunneling.class, EntityDataSerializers.OPTIONAL_UUID);
+        private static final EntityDataAccessor<Optional<UUID>> TUNNELER = SynchedEntityData.defineId(EntityBlockSwapper.EntityBlockSwapperTunneling.class, com.bobmowzie.mowziesmobs.server.entity.EntityHandler.OPTIONAL_UUID.get());
 
         public EntityBlockSwapperTunneling(EntityType<? extends EntityBlockSwapperTunneling> type, Level world) {
             super(type, world);
@@ -192,7 +199,7 @@ public class EntityBlockSwapper extends Entity {
         public EntityBlockSwapperTunneling(EntityType<? extends EntityBlockSwapperTunneling> type, Level world, BlockPos pos, BlockState newBlock, int duration, boolean breakParticlesStart, boolean breakParticlesEnd, LivingEntity tunneler) {
             super(type, world, pos, newBlock, duration, breakParticlesStart, breakParticlesEnd);
             cachedTunneler = tunneler;
-            if (!world.isClientSide && tunneler != null) {
+            if (!world.isClientSide() && tunneler != null) {
                 this.setTunnelerID(tunneler.getUUID());
             }
         }
@@ -237,7 +244,7 @@ public class EntityBlockSwapper extends Entity {
         }
 
         @Override
-        public boolean canBeCollidedWith() {
+        public boolean canBeCollidedWith(@Nullable Entity other) {
             return true;
         }
 
@@ -255,16 +262,16 @@ public class EntityBlockSwapper extends Entity {
         }
 
         @Override
-        public void readAdditionalSaveData(CompoundTag compound) {
-            super.readAdditionalSaveData(compound);
-            setTunnelerID(compound.getUUID("tunneler"));
+        public void readAdditionalSaveData(ValueInput input) {
+            super.readAdditionalSaveData(input);
+            input.read("tunneler", UUIDUtil.CODEC).ifPresent(this::setTunnelerID);
         }
 
         @Override
-        public void addAdditionalSaveData(CompoundTag compound) {
-            super.addAdditionalSaveData(compound);
+        public void addAdditionalSaveData(ValueOutput output) {
+            super.addAdditionalSaveData(output);
             if (getTunnelerID().isPresent()) {
-                compound.putUUID("tunneler", getTunnelerID().get());
+                output.store("tunneler", UUIDUtil.CODEC, getTunnelerID().get());
             }
         }
 
@@ -321,7 +328,7 @@ public class EntityBlockSwapper extends Entity {
             List<EntityBlockSwapperSculptor> swapperSculptors = world.getEntitiesOfClass(EntityBlockSwapperSculptor.class, getBoundingBox());
 
             // Loop over the blocks inside this one and replace them
-            if (!world.isClientSide) {
+            if (!world.isClientSide()) {
                 for (int k = 0; k < height; k++) {
                     for (int i = -radius; i < radius; i++) {
                         for (int j = -radius; j < radius; j++) {
@@ -381,18 +388,18 @@ public class EntityBlockSwapper extends Entity {
         }
 
         @Override
-        protected AABB makeBoundingBox() {
-            return EntityDimensions.scalable(radius * 2, height).makeBoundingBox(position());
+        protected AABB makeBoundingBox(Vec3 position) {
+            return EntityDimensions.scalable(radius * 2, height).makeBoundingBox(position);
         }
 
         @Override
         public void restoreBlock() {
-            if (!level().isClientSide) {
+            if (!level().isClientSide()) {
                 List<EntityBlockSwapper> swappers = level().getEntitiesOfClass(EntityBlockSwapper.class, getBoundingBox());
                 for (int k = 0; k < height; k++) {
                     for (int i = -radius; i < radius; i++) {
                         for (int j = -radius; j < radius; j++) {
-                            if (!level().isClientSide) {
+                            if (!level().isClientSide()) {
                                 BlockPos thisPos = getStorePos().offset(i, k, j);
                                 if (isBlockPosInsideSwapper(thisPos)) {
                                     boolean canReplace = true;
@@ -425,37 +432,34 @@ public class EntityBlockSwapper extends Entity {
         }
 
         @Override
-        public void addAdditionalSaveData(CompoundTag compound) {
-            compound.putInt("restoreTime", getRestoreTime());
-            compound.putInt("storePosX", getStorePos().getX());
-            compound.putInt("storePosY", getStorePos().getY());
-            compound.putInt("storePosZ", getStorePos().getZ());
+        public void addAdditionalSaveData(ValueOutput output) {
+            output.putInt("restoreTime", getRestoreTime());
+            output.putInt("storePosX", getStorePos().getX());
+            output.putInt("storePosY", getStorePos().getY());
+            output.putInt("storePosZ", getStorePos().getZ());
             for (int i = 0; i < radius * 2; i++) {
                 for (int j = 0; j < radius * 2; j++) {
                     for (int k = 0; k < height; k++) {
                         BlockState block = origStates[k][i][j];
-                        if (block != null) compound.put("block_" + i + "_" + j + "_" + k, NbtUtils.writeBlockState(block));
+                        if (block != null) output.store("block_" + i + "_" + j + "_" + k, BlockState.CODEC, block);
                     }
                 }
             }
         }
 
         @Override
-        public void readAdditionalSaveData(CompoundTag compound) {
-            setRestoreTime(compound.getInt("restoreTime"));
+        public void readAdditionalSaveData(ValueInput input) {
+            setRestoreTime(input.getIntOr("restoreTime", 0));
             setStorePos(new BlockPos(
-                    compound.getInt("storePosX"),
-                    compound.getInt("storePosY"),
-                    compound.getInt("storePosZ")
+                    input.getIntOr("storePosX", 0),
+                    input.getIntOr("storePosY", 0),
+                    input.getIntOr("storePosZ", 0)
             ));
             for (int i = 0; i < radius * 2; i++) {
                 for (int j = 0; j < radius * 2; j++) {
                     for (int k = 0; k < height; k++) {
-                        Tag blockNBT = compound.get("block_" + i + "_" + j + "_" + k);
-                        if (blockNBT != null) {
-                            BlockState blockState = NbtUtils.readBlockState(this.level().holderLookup(Registries.BLOCK), (CompoundTag) blockNBT);
-                            origStates[k][i][j] = blockState;
-                        }
+                        final int fi = i, fj = j, fk = k;
+                        input.read("block_" + i + "_" + j + "_" + k, BlockState.CODEC).ifPresent(blockState -> origStates[fk][fi][fj] = blockState);
                     }
                 }
             }

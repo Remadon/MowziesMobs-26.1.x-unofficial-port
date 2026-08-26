@@ -19,7 +19,7 @@ import net.minecraft.world.item.ItemStack;
 import net.minecraft.world.phys.Vec3;
 import net.neoforged.neoforge.event.entity.player.AttackEntityEvent;
 import net.neoforged.neoforge.event.entity.player.PlayerInteractEvent;
-import software.bernie.geckolib.animation.RawAnimation;
+import com.geckolib.animation.RawAnimation;
 
 import java.util.List;
 
@@ -36,7 +36,7 @@ public class SolarFlareAbility extends HeliomancyAbilityBase {
         super.start();
         getUser().playSound(MMSounds.ENTITY_UMVUTHI_BURST.get(), 1.7f, 1.5f);
         playAnimation(SOLAR_FLARE_ANIM);
-        if (getLevel().isClientSide) {
+        if (getLevel().isClientSide()) {
             heldItemMainHandVisualOverride = ItemStack.EMPTY;
             heldItemOffHandVisualOverride = ItemStack.EMPTY;
             firstPersonOffHandDisplay = HandDisplay.FORCE_RENDER;
@@ -46,7 +46,7 @@ public class SolarFlareAbility extends HeliomancyAbilityBase {
 
     @Override
     public boolean canUse() {
-        if (getUser() == null || !getUser().getInventory().getSelected().isEmpty()) return false;
+        if (getUser() == null || !getUser().getInventory().getSelectedItem().isEmpty()) return false;
         return getUser().hasEffect(EffectHandler.SUNS_BLESSING) && super.canUse();
     }
 
@@ -54,10 +54,10 @@ public class SolarFlareAbility extends HeliomancyAbilityBase {
     public void tickUsing() {
         super.tickUsing();
         if (getTicksInUse() < 16) {
-            getUser().addEffect(new MobEffectInstance(MobEffects.MOVEMENT_SLOWDOWN, 2, 2, false, false));
+            getUser().addEffect(new MobEffectInstance(MobEffects.SLOWNESS, 2, 2, false, false));
         }
 
-        if (getTicksInUse() <= 6 && getLevel().isClientSide) {
+        if (getTicksInUse() <= 6 && getLevel().isClientSide()) {
             int particleCount = 8;
             while (--particleCount != 0) {
                 double radius = 2f;
@@ -71,7 +71,7 @@ public class SolarFlareAbility extends HeliomancyAbilityBase {
         }
 
         if (getTicksInUse() == 10) {
-            if (getLevel().isClientSide) {
+            if (getLevel().isClientSide()) {
                 for (int i = 0; i < 30; i++) {
                     final float velocity = 0.25F;
                     float yaw = i * (MathUtils.TAU / 30);
@@ -98,7 +98,10 @@ public class SolarFlareAbility extends HeliomancyAbilityBase {
                 float damage = 2.0f;
                 float knockback = 3.0f;
                 damage *= ConfigHandler.COMMON.TOOLS_AND_ABILITIES.SUNS_BLESSING.sunsBlessingAttackMultiplier.get();
-                if (aHit.hurt(user.damageSources().playerAttack(user), damage)) {
+                // PORTING NOTE: LivingEntity#hurt(DamageSource, float) is now void/@Deprecated - hurtOrSimulate
+                // (also @Deprecated but explicitly still boolean-returning and dual-side-safe) is the direct
+                // replacement that preserves the old return-value-checking behavior here.
+                if (aHit.hurtOrSimulate(user.damageSources().playerAttack(user), damage)) {
                     if (knockback > 0) {
                         Vec3 vec3 = aHit.position().subtract(user.position()).normalize().scale((double)knockback * 0.6D);
                         if (vec3.lengthSqr() > 0.0D) {

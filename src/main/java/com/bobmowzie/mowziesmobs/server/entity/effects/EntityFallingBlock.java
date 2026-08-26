@@ -13,6 +13,8 @@ import net.minecraft.world.entity.MoverType;
 import net.minecraft.world.level.Level;
 import net.minecraft.world.level.block.Blocks;
 import net.minecraft.world.level.block.state.BlockState;
+import net.minecraft.world.level.storage.ValueInput;
+import net.minecraft.world.level.storage.ValueOutput;
 import org.jetbrains.annotations.NotNull;
 
 public class EntityFallingBlock extends Entity {
@@ -50,6 +52,12 @@ public class EntityFallingBlock extends Entity {
         setBlock(blockState);
         setMode(EnumFallingBlockMode.POPUP_ANIM);
         setAnimVY(vy);
+    }
+
+    @Override
+    public boolean hurtServer(net.minecraft.server.level.ServerLevel level, net.minecraft.world.damagesource.DamageSource source, float amount) {
+        // NOTE 26.1.2 port: see EntityMagicEffect#hurtServer for context on this required override.
+        return false;
     }
 
     @Override
@@ -95,27 +103,23 @@ public class EntityFallingBlock extends Entity {
     }
 
     @Override
-    protected void readAdditionalSaveData(CompoundTag compound) {
-        Tag blockStateCompound = compound.get("block");
-        if (blockStateCompound != null) {
-            BlockState blockState = NbtUtils.readBlockState(this.level().holderLookup(Registries.BLOCK), (CompoundTag) blockStateCompound);
-            setBlock(blockState);
-        }
-        setDuration(compound.getInt("duration"));
-        tickCount = compound.getInt("ticksExisted");
-        getEntityData().set(MODE, compound.getString("mode"));
-        setAnimVY(compound.getFloat("vy"));
+    protected void readAdditionalSaveData(ValueInput input) {
+        input.read("block", BlockState.CODEC).ifPresent(this::setBlock);
+        setDuration(input.getIntOr("duration", 70));
+        tickCount = input.getIntOr("ticksExisted", 0);
+        getEntityData().set(MODE, input.getStringOr("mode", EnumFallingBlockMode.MOBILE.toString()));
+        setAnimVY(input.getFloatOr("vy", 1f));
 
     }
 
     @Override
-    protected void addAdditionalSaveData(CompoundTag compound) {
+    protected void addAdditionalSaveData(ValueOutput output) {
         BlockState blockState = getBlock();
-        if (blockState != null) compound.put("block", NbtUtils.writeBlockState(blockState));
-        compound.putInt("duration", getDuration());
-        compound.putInt("ticksExisted", tickCount);
-        compound.putString("mode", getEntityData().get(MODE));
-        compound.putFloat("vy", getEntityData().get(ANIM_V_Y));
+        if (blockState != null) output.store("block", BlockState.CODEC, blockState);
+        output.putInt("duration", getDuration());
+        output.putInt("ticksExisted", tickCount);
+        output.putString("mode", getEntityData().get(MODE));
+        output.putFloat("vy", getEntityData().get(ANIM_V_Y));
     }
 
     public BlockState getBlock() {

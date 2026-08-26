@@ -22,10 +22,13 @@ import net.minecraft.world.entity.LivingEntity;
 import net.minecraft.world.entity.MoverType;
 import net.minecraft.world.level.Level;
 import net.minecraft.world.level.block.state.BlockState;
+import net.minecraft.world.level.storage.ValueInput;
+import net.minecraft.world.level.storage.ValueOutput;
 import net.minecraft.world.phys.AABB;
 import net.minecraft.world.phys.Vec3;
 import org.jetbrains.annotations.NotNull;
-import software.bernie.geckolib.animation.AnimatableManager;
+import org.jspecify.annotations.Nullable;
+import com.geckolib.animatable.manager.AnimatableManager;
 
 import java.util.Collections;
 import java.util.HashMap;
@@ -73,7 +76,7 @@ public class EntityPillar extends EntityGeomancyBase implements IGeomancyRumbler
     }
 
     @Override
-    public boolean canBeCollidedWith() {
+    public boolean canBeCollidedWith(@Nullable Entity other) {
         return false;
     }
 
@@ -147,8 +150,8 @@ public class EntityPillar extends EntityGeomancyBase implements IGeomancyRumbler
     }
 
     @Override
-    protected AABB makeBoundingBox() {
-        if (tickCount <= 1) return super.makeBoundingBox();
+    protected AABB makeBoundingBox(Vec3 position) {
+        if (tickCount <= 1) return super.makeBoundingBox(position);
         float f = SIZE_MAP.get(getTier()) / 2.0F - 0.05f;
         return new AABB(getX() - (double)f, getY(), getZ() - (double)f, getX() + (double)f, getY() + getHeight() - 0.05f, getZ() + (double)f);
     }
@@ -195,19 +198,19 @@ public class EntityPillar extends EntityGeomancyBase implements IGeomancyRumbler
     }
 
     @Override
-    public void addAdditionalSaveData(CompoundTag compound) {
-        super.addAdditionalSaveData(compound);
-        compound.putFloat("height", getHeight());
-        compound.putBoolean("rising", isRising());
-        compound.putBoolean("falling", isFalling());
+    public void addAdditionalSaveData(ValueOutput output) {
+        super.addAdditionalSaveData(output);
+        output.putFloat("height", getHeight());
+        output.putBoolean("rising", isRising());
+        output.putBoolean("falling", isFalling());
     }
 
     @Override
-    public void readAdditionalSaveData(CompoundTag compound) {
-        super.readAdditionalSaveData(compound);
-        setHeight(compound.getFloat("height"));
-        getEntityData().set(RISING, compound.getBoolean("rising"));
-        getEntityData().set(FALLING, compound.getBoolean("falling"));
+    public void readAdditionalSaveData(ValueInput input) {
+        super.readAdditionalSaveData(input);
+        setHeight(input.getFloatOr("height", 0f));
+        getEntityData().set(RISING, input.getBooleanOr("rising", false));
+        getEntityData().set(FALLING, input.getBooleanOr("falling", false));
     }
 
     @Override
@@ -264,7 +267,7 @@ public class EntityPillar extends EntityGeomancyBase implements IGeomancyRumbler
             particlePos = particlePos.xRot((float) (random.nextFloat() * 2 * Math.PI));
             particlePos = particlePos.add(0, getHeight() * random.nextFloat(), 0);
             Camera camera = Minecraft.getInstance().gameRenderer.getMainCamera();
-            boolean overrideLimiter = camera.getPosition().distanceToSqr(getX(), getY(), getZ()) < 64 * 64;
+            boolean overrideLimiter = camera.position().distanceToSqr(getX(), getY(), getZ()) < 64 * 64;
             level().addAlwaysVisibleParticle(new BlockParticleOption(ParticleTypes.BLOCK, getBlock()), overrideLimiter, getX() + particlePos.x, getY() + 0.5 + particlePos.y, getZ() + particlePos.z, particlePos.x, particlePos.y, particlePos.z);
         }
     }

@@ -10,6 +10,8 @@ import net.minecraft.world.entity.Entity;
 import net.minecraft.world.entity.EntityType;
 import net.minecraft.world.entity.player.Player;
 import net.minecraft.world.level.Level;
+import net.minecraft.world.level.storage.ValueInput;
+import net.minecraft.world.level.storage.ValueOutput;
 import net.minecraft.world.phys.Vec3;
 import org.jetbrains.annotations.NotNull;
 
@@ -45,6 +47,12 @@ public class EntityCameraShake extends Entity {
     public void tick() {
         super.tick();
         if (tickCount > getDuration() + getFadeDuration()) discard() ;
+    }
+
+    @Override
+    public boolean hurtServer(net.minecraft.server.level.ServerLevel level, net.minecraft.world.damagesource.DamageSource source, float amount) {
+        // NOTE 26.1.2 port: see EntityMagicEffect#hurtServer for context on this required override.
+        return false;
     }
 
     @Override
@@ -88,25 +96,25 @@ public class EntityCameraShake extends Entity {
     }
 
     @Override
-    protected void readAdditionalSaveData(CompoundTag compound) {
-        setRadius(compound.getFloat("radius"));
-        setMagnitude(compound.getFloat("magnitude"));
-        setDuration(compound.getInt("duration"));
-        setFadeDuration(compound.getInt("fade_duration"));
-        tickCount = compound.getInt("ticks_existed");
+    protected void readAdditionalSaveData(ValueInput input) {
+        setRadius(input.getFloatOr("radius", 10.0f));
+        setMagnitude(input.getFloatOr("magnitude", 1.0f));
+        setDuration(input.getIntOr("duration", 0));
+        setFadeDuration(input.getIntOr("fade_duration", 5));
+        tickCount = input.getIntOr("ticks_existed", 0);
     }
 
     @Override
-    protected void addAdditionalSaveData(CompoundTag compound) {
-        compound.putFloat("radius", getRadius());
-        compound.putFloat("magnitude", getMagnitude());
-        compound.putInt("duration", getDuration());
-        compound.putInt("fade_duration", getFadeDuration());
-        compound.putInt("ticks_existed", tickCount);
+    protected void addAdditionalSaveData(ValueOutput output) {
+        output.putFloat("radius", getRadius());
+        output.putFloat("magnitude", getMagnitude());
+        output.putInt("duration", getDuration());
+        output.putInt("fade_duration", getFadeDuration());
+        output.putInt("ticks_existed", tickCount);
     }
 
     public static void cameraShake(Level world, Vec3 position, float radius, float magnitude, int duration, int fadeDuration) {
-        if (!world.isClientSide) {
+        if (!world.isClientSide()) {
             EntityCameraShake cameraShake = new EntityCameraShake(world, position, radius, magnitude, duration, fadeDuration);
             world.addFreshEntity(cameraShake);
         }

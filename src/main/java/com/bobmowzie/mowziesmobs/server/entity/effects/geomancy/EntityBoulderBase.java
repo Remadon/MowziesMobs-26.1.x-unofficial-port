@@ -16,9 +16,12 @@ import net.minecraft.network.syncher.SynchedEntityData;
 import net.minecraft.world.entity.*;
 import net.minecraft.world.level.Level;
 import net.minecraft.world.level.block.state.BlockState;
+import net.minecraft.world.level.storage.ValueInput;
+import net.minecraft.world.level.storage.ValueOutput;
 import net.minecraft.world.phys.AABB;
 import net.minecraft.world.phys.Vec3;
 import org.jetbrains.annotations.NotNull;
+import org.jspecify.annotations.Nullable;
 
 import java.util.HashMap;
 import java.util.List;
@@ -63,7 +66,7 @@ public abstract class EntityBoulderBase extends EntityGeomancyBase {
     }
 
     @Override
-    public boolean canBeCollidedWith() {
+    public boolean canBeCollidedWith(@Nullable Entity other) {
         return isActive();
     }
 
@@ -86,10 +89,10 @@ public abstract class EntityBoulderBase extends EntityGeomancyBase {
     }
 
     @Override
-    protected @NotNull AABB makeBoundingBox() {
+    protected @NotNull AABB makeBoundingBox(Vec3 position) {
         EntityDimensions dim = EntityBoulderBase.SIZE_MAP.get(getTier());
         dimensions = dim;
-        return dim.makeBoundingBox(this.position());
+        return dim.makeBoundingBox(position);
     }
 
     public void activate() {
@@ -159,7 +162,7 @@ public abstract class EntityBoulderBase extends EntityGeomancyBase {
                 playSound(MMSounds.EFFECT_GEOMANCY_RUMBLE_1.get(), 2, 0.8f);
                 EntityCameraShake.cameraShake(level(), position(), 15, 0.05f, 50, 30);
             }
-            if (level().isClientSide) {
+            if (level().isClientSide()) {
                 AdvancedParticleBase.spawnAlwaysVisibleParticle(level(), ParticleHandler.RING2, 64, getX(), getY() - 0.9f, getZ(), 0, 0, 0, false, 0, Math.PI / 2f, 0, 0, 3.5F, 0.83f, 1, 0.39f, 1, 1, (int) (5 + 2 * getBbWidth()), true, true, new ParticleComponent[]{
                         new ParticleComponent.PropertyControl(ParticleComponent.PropertyControl.EnumParticleProperty.ALPHA, ParticleComponent.KeyTrack.startAndEnd(1f, 0f), false),
                         new ParticleComponent.PropertyControl(ParticleComponent.PropertyControl.EnumParticleProperty.SCALE, ParticleComponent.KeyTrack.startAndEnd(0f, (1.0f + 0.5f * getBbWidth()) * 10f), false)
@@ -212,15 +215,15 @@ public abstract class EntityBoulderBase extends EntityGeomancyBase {
     }
 
     @Override
-    public void addAdditionalSaveData(CompoundTag compound) {
-        super.addAdditionalSaveData(compound);
-        compound.putInt("risingTick", risingTick);
+    public void addAdditionalSaveData(ValueOutput output) {
+        super.addAdditionalSaveData(output);
+        output.putInt("risingTick", risingTick);
     }
 
     @Override
-    public void readAdditionalSaveData(CompoundTag compound) {
-        super.readAdditionalSaveData(compound);
-        setRisingTickData(compound.getInt("risingTick"));
+    public void readAdditionalSaveData(ValueInput input) {
+        super.readAdditionalSaveData(input);
+        setRisingTickData(input.getIntOr("risingTick", 0));
     }
 
     @Override

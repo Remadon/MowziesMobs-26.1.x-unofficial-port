@@ -87,7 +87,7 @@ public abstract class ContainerTradeBase extends AbstractContainerMenu {
     }
 
     public void returnItems() {
-        if (!player.level().isClientSide) {
+        if (!player.level().isClientSide()) {
             if (!player.isAlive() || player instanceof ServerPlayer && ((ServerPlayer)player).hasDisconnected()) {
                 ItemStack itemstack = inventory.removeItemNoUpdate(0);
                 if (!itemstack.isEmpty()) {

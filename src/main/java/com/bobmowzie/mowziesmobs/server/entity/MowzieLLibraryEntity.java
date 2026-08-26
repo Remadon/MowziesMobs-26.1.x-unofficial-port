@@ -4,6 +4,7 @@ import com.ilexiconn.llibrary.server.animation.Animation;
 import com.ilexiconn.llibrary.server.animation.AnimationHandler;
 import com.ilexiconn.llibrary.server.animation.IAnimatedEntity;
 import net.minecraft.network.RegistryFriendlyByteBuf;
+import net.minecraft.server.level.ServerLevel;
 import net.minecraft.world.damagesource.DamageSource;
 import net.minecraft.world.entity.EntityType;
 import net.minecraft.world.level.Level;
@@ -23,7 +24,7 @@ public abstract class MowzieLLibraryEntity extends MowzieEntity implements IAnim
         super.tick();
         if (getAnimation() != NO_ANIMATION) {
             animationTick++;
-            if (level().isClientSide && animationTick >= animation.getDuration()) {
+            if (level().isClientSide() && animationTick >= animation.getDuration()) {
                 setAnimation(NO_ANIMATION);
             }
         }
@@ -32,8 +33,8 @@ public abstract class MowzieLLibraryEntity extends MowzieEntity implements IAnim
     protected void onAnimationFinish(Animation animation) {}
 
     @Override
-    public boolean hurt(DamageSource source, float damage) {
-        boolean attack = super.hurt(source, damage);
+    public boolean hurtServer(ServerLevel level, DamageSource source, float damage) {
+        boolean attack = super.hurtServer(level, source, damage);
         if (attack) {
             if (getHealth() > 0.0F && (getAnimation() == NO_ANIMATION || hurtInterruptsAnimation) && playsHurtAnimation) {
                 AnimationHandler.INSTANCE.sendAnimationMessage(this, getHurtAnimation());

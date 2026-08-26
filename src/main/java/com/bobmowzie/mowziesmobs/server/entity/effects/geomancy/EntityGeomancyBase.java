@@ -11,6 +11,8 @@ import com.bobmowzie.mowziesmobs.server.tag.TagHandler;
 import net.minecraft.client.Camera;
 import net.minecraft.client.Minecraft;
 import net.minecraft.core.BlockPos;
+import net.minecraft.core.Holder;
+import net.minecraft.core.HolderLookup;
 import net.minecraft.core.Registry;
 import net.minecraft.core.particles.BlockParticleOption;
 import net.minecraft.core.particles.ParticleTypes;
@@ -22,9 +24,10 @@ import net.minecraft.network.syncher.EntityDataAccessor;
 import net.minecraft.network.syncher.EntityDataSerializers;
 import net.minecraft.network.syncher.SynchedEntityData;
 import net.minecraft.resources.ResourceKey;
-import net.minecraft.resources.ResourceLocation;
+import net.minecraft.resources.Identifier;
 import net.minecraft.sounds.SoundEvent;
 import net.minecraft.tags.BlockTags;
+import net.minecraft.world.entity.Entity;
 import net.minecraft.world.entity.EntityType;
 import net.minecraft.world.entity.LivingEntity;
 import net.minecraft.world.level.Explosion;
@@ -34,12 +37,15 @@ import net.minecraft.world.level.block.Blocks;
 import net.minecraft.world.level.block.SlabBlock;
 import net.minecraft.world.level.block.state.BlockState;
 import net.minecraft.world.level.material.PushReaction;
+import net.minecraft.world.level.storage.ValueInput;
+import net.minecraft.world.level.storage.ValueOutput;
 import net.minecraft.world.phys.Vec3;
 import net.neoforged.neoforge.common.Tags;
 import org.jetbrains.annotations.NotNull;
-import software.bernie.geckolib.animatable.GeoEntity;
-import software.bernie.geckolib.animatable.instance.AnimatableInstanceCache;
-import software.bernie.geckolib.util.GeckoLibUtil;
+import org.jspecify.annotations.Nullable;
+import com.geckolib.animatable.GeoEntity;
+import com.geckolib.animatable.instance.AnimatableInstanceCache;
+import com.geckolib.util.GeckoLibUtil;
 
 import java.util.Optional;
 
@@ -73,7 +79,7 @@ public abstract class EntityGeomancyBase extends EntityMagicEffect implements Ge
 
     public EntityGeomancyBase(EntityType<? extends EntityMagicEffect> type, Level worldIn, LivingEntity caster, BlockState blockState, BlockPos pos) {
         super(type, worldIn, caster);
-        if (!worldIn.isClientSide && blockState != null && EffectGeomancy.isBlockUseable(blockState)) {
+        if (!worldIn.isClientSide() && blockState != null && EffectGeomancy.isBlockUseable(blockState)) {
             BlockState newBlock = changeBlock(blockState);
             setBlock(newBlock);
         }
@@ -91,16 +97,17 @@ public abstract class EntityGeomancyBase extends EntityMagicEffect implements Ge
 
         ResourceKey<Block> blockKey = blockState.getBlock().builtInRegistryHolder().getKey();
         if (blockKey != null) {
-            String blockString = blockKey.location().toString();
+            String blockString = blockKey.identifier().toString();
             if (blockState.getBlock() instanceof SlabBlock && blockString.endsWith("_slab")) {
                 String baseBlockString = blockString.substring(0, blockString.lastIndexOf('_'));
                 if (baseBlockString.endsWith("brick")) {
                     baseBlockString += "s";
                 }
-                Registry<Block> blockRegistry = level().registryAccess().registryOrThrow(Registries.BLOCK);
-                Optional<Block> optional = blockRegistry.getOptional(ResourceLocation.tryParse(baseBlockString));
+                Identifier baseBlockId = Identifier.tryParse(baseBlockString);
+                HolderLookup.RegistryLookup<Block> blockRegistry = level().registryAccess().lookupOrThrow(Registries.BLOCK);
+                Optional<Holder.Reference<Block>> optional = baseBlockId != null ? blockRegistry.get(ResourceKey.create(Registries.BLOCK, baseBlockId)) : Optional.empty();
                 if (optional.isPresent()) {
-                    blockState = optional.get().defaultBlockState();
+                    blockState = optional.get().value().defaultBlockState();
                 }
             }
         }
@@ -143,7 +150,7 @@ public abstract class EntityGeomancyBase extends EntityMagicEffect implements Ge
     }
 
     @Override
-    public boolean canBeCollidedWith() {
+    public boolean canBeCollidedWith(@Nullable Entity other) {
         return true;
     }
 
@@ -233,7 +240,7 @@ public abstract class EntityGeomancyBase extends EntityMagicEffect implements Ge
             particlePos = particlePos.xRot((float) (random.nextFloat() * 2 * Math.PI));
             particlePos = particlePos.add(0, getBbHeight() / 2.0, 0);
             Camera camera = Minecraft.getInstance().gameRenderer.getMainCamera();
-            boolean overrideLimiter = camera.getPosition().distanceToSqr(getX(), getY(), getZ()) < 64 * 64;
+            boolean overrideLimiter = camera.position().distanceToSqr(getX(), getY(), getZ()) < 64 * 64;
             level().addAlwaysVisibleParticle(new BlockParticleOption(ParticleTypes.BLOCK, getBlock()), overrideLimiter, getX() + particlePos.x, getY() + 0.5 + particlePos.y, getZ() + particlePos.z, particlePos.x, particlePos.y, particlePos.z);
         }
     }
@@ -271,30 +278,27 @@ public abstract class EntityGeomancyBase extends EntityMagicEffect implements Ge
     }
 
     @Override
-    public void addAdditionalSaveData(CompoundTag compound) {
-        super.addAdditionalSaveData(compound);
+    public void addAdditionalSaveData(ValueOutput output) {
+        super.addAdditionalSaveData(output);
         BlockState blockState = getBlock();
-        if (blockState != null) compound.put("block", NbtUtils.writeBlockState(blockState));
-        if (doRemoveTimer()) compound.putInt("deathTime", getDeathTime());
-        compound.putInt("tier", getTier().ordinal());
+        if (blockState != null) output.store("block", BlockState.CODEC, blockState);
+        if (doRemoveTimer()) output.putInt("deathTime", getDeathTime());
+        output.putInt("tier", getTier().ordinal());
     }
 
     @Override
-    public void readAdditionalSaveData(CompoundTag compound) {
-        super.readAdditionalSaveData(compound);
-        Tag blockStateCompound = compound.get("block");
-        if (blockStateCompound != null) {
-            BlockState blockState = NbtUtils.readBlockState(this.level().holderLookup(Registries.BLOCK), (CompoundTag) blockStateCompound);
-            setBlock(blockState);
-        }
-        if (compound.contains("deathTime")) {
+    public void readAdditionalSaveData(ValueInput input) {
+        super.readAdditionalSaveData(input);
+        input.read("block", BlockState.CODEC).ifPresent(this::setBlock);
+        Optional<Integer> deathTime = input.getInt("deathTime");
+        if (deathTime.isPresent()) {
             doRemoveTimer = true;
-            setDeathTime(compound.getInt("deathTime"));
+            setDeathTime(deathTime.get());
         }
         else {
             doRemoveTimer = false;
         }
-        setTier(GeomancyTier.values()[compound.getInt("tier")]);
+        setTier(GeomancyTier.values()[input.getIntOr("tier", 0)]);
     }
 
     @Override

@@ -1,12 +1,12 @@
 package com.bobmowzie.mowziesmobs.client.model.tools;
 
+import com.bobmowzie.mowziesmobs.client.model.tools.geckolib.MowzieGeoBone;
 import net.minecraft.util.Mth;
 import net.minecraft.world.phys.Vec3;
 import org.joml.Matrix3f;
 import org.joml.Matrix4f;
 import org.joml.Quaternionf;
 import org.joml.Vector3f;
-import software.bernie.geckolib.cache.object.GeoBone;
 
 public class RigUtils {
     public static Vec3 lerp(Vec3 v, Vec3 u, float alpha) {
@@ -62,11 +62,11 @@ public class RigUtils {
             );
         }
 
-        public void apply(GeoBone bone) {
+        public void apply(MowzieGeoBone bone) {
             apply(bone, false);
         }
 
-        public void apply(GeoBone bone, boolean mirrorX) {
+        public void apply(MowzieGeoBone bone, boolean mirrorX) {
             float mirror = mirrorX ? -1 : 1;
             bone.setPosX(bone.getPosX() + mirror * (float) translation.x());
             bone.setPosY(bone.getPosY() + (float) translation.y());
@@ -111,7 +111,7 @@ public class RigUtils {
             this.entries = entries;
         }
 
-        public void evaluate(GeoBone bone, Vec3 dir) {
+        public void evaluate(MowzieGeoBone bone, Vec3 dir) {
             evaluate(bone, dir, false);
         }
 
@@ -172,7 +172,7 @@ public class RigUtils {
             return weights;
         }
 
-        public void evaluate(GeoBone bone, Vec3 d, boolean mirrorX) {
+        public void evaluate(MowzieGeoBone bone, Vec3 d, boolean mirrorX) {
             Vec3 dir = mirrorX ? d.multiply(-1, 1, 1) : d;
             dir = dir.normalize();
 

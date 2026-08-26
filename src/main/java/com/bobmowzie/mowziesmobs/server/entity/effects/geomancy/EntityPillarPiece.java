@@ -1,5 +1,6 @@
 package com.bobmowzie.mowziesmobs.server.entity.effects.geomancy;
 
+import net.minecraft.core.UUIDUtil;
 import net.minecraft.nbt.CompoundTag;
 import net.minecraft.network.syncher.EntityDataAccessor;
 import net.minecraft.network.syncher.EntityDataSerializers;
@@ -10,14 +11,17 @@ import net.minecraft.world.entity.EntityType;
 import net.minecraft.world.level.Explosion;
 import net.minecraft.world.level.Level;
 import net.minecraft.world.level.material.PushReaction;
+import net.minecraft.world.level.storage.ValueInput;
+import net.minecraft.world.level.storage.ValueOutput;
 import net.minecraft.world.phys.AABB;
 import net.minecraft.world.phys.Vec3;
+import org.jspecify.annotations.Nullable;
 
 import java.util.Optional;
 import java.util.UUID;
 
 public class EntityPillarPiece extends Entity {
-    private static final EntityDataAccessor<Optional<UUID>> PILLAR = SynchedEntityData.defineId(EntityPillarPiece.class, EntityDataSerializers.OPTIONAL_UUID);
+    private static final EntityDataAccessor<Optional<UUID>> PILLAR = SynchedEntityData.defineId(EntityPillarPiece.class, com.bobmowzie.mowziesmobs.server.entity.EntityHandler.OPTIONAL_UUID.get());
     private static final EntityDataAccessor<Integer> TIER = SynchedEntityData.defineId(EntityPillarPiece.class, EntityDataSerializers.INT);
 
     private EntityPillar pillar;
@@ -30,11 +34,11 @@ public class EntityPillarPiece extends Entity {
         super(type, level);
         this.pillar = pillar;
         setTier(pillar.getTier());
-        this.absMoveTo(position.x, position.y, position.z);
+        this.snapTo(position.x, position.y, position.z);
     }
 
     @Override
-    public boolean canBeCollidedWith() {
+    public boolean canBeCollidedWith(@Nullable Entity other) {
         return true;
     }
 
@@ -70,9 +74,9 @@ public class EntityPillarPiece extends Entity {
     }
 
     @Override
-    protected AABB makeBoundingBox() {
+    protected AABB makeBoundingBox(Vec3 position) {
         float f = EntityPillar.SIZE_MAP.get(getTier()) / 2.0F;
-        return new AABB(getX() - (double)f, getY(), getZ() - (double)f, getX() + (double)f, getY() + 1, getZ() + (double)f);
+        return new AABB(position.x - (double)f, position.y, position.z - (double)f, position.x + (double)f, position.y + 1, position.z + (double)f);
     }
 
     @Override
@@ -82,15 +86,19 @@ public class EntityPillarPiece extends Entity {
     }
 
     @Override
-    protected void readAdditionalSaveData(CompoundTag compound) {
-        if (compound != null) {
-            setPillarUUID(compound.getUUID("pillar"));
-        }
+    public boolean hurtServer(ServerLevel level, net.minecraft.world.damagesource.DamageSource source, float amount) {
+        // NOTE 26.1.2 port: see EntityMagicEffect#hurtServer for context on this required override.
+        return false;
     }
 
     @Override
-    protected void addAdditionalSaveData(CompoundTag compound) {
-        if (pillar != null) compound.putUUID("pillar", pillar.getUUID());
+    protected void readAdditionalSaveData(ValueInput input) {
+        input.read("pillar", UUIDUtil.CODEC).ifPresent(this::setPillarUUID);
+    }
+
+    @Override
+    protected void addAdditionalSaveData(ValueOutput output) {
+        if (pillar != null) output.store("pillar", UUIDUtil.CODEC, pillar.getUUID());
     }
 
     @Override
@@ -118,7 +126,7 @@ public class EntityPillarPiece extends Entity {
 
     public EntityPillar getPillar() {
         Optional<UUID> uuid = getPillarUUID();
-        if (uuid.isPresent() && !level().isClientSide) {
+        if (uuid.isPresent() && !level().isClientSide()) {
             return (EntityPillar) ((ServerLevel) level()).getEntity(uuid.get());
         }
         return null;

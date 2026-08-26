@@ -16,6 +16,8 @@ import net.minecraft.world.entity.ai.attributes.Attributes;
 import net.minecraft.world.level.Level;
 import net.minecraft.world.level.block.Blocks;
 import net.minecraft.world.level.block.state.BlockState;
+import net.minecraft.world.level.storage.ValueInput;
+import net.minecraft.world.level.storage.ValueOutput;
 import net.minecraft.world.phys.AABB;
 import net.minecraft.world.phys.Vec2;
 import net.minecraft.world.phys.Vec3;
@@ -365,19 +367,19 @@ public class EntityBoulderSculptor extends EntityBoulderProjectile {
     }
 
     @Override
-    public void addAdditionalSaveData(CompoundTag compound) {
-        super.addAdditionalSaveData(compound);
-        compound.putBoolean("SpawnedNext", spawnedNextBoulders);
-        compound.putBoolean("Descending", descending);
-        compound.putBoolean("MainPath", isMainPath);
+    public void addAdditionalSaveData(ValueOutput output) {
+        super.addAdditionalSaveData(output);
+        output.putBoolean("SpawnedNext", spawnedNextBoulders);
+        output.putBoolean("Descending", descending);
+        output.putBoolean("MainPath", isMainPath);
     }
 
     @Override
-    public void readAdditionalSaveData(CompoundTag compound) {
-        super.readAdditionalSaveData(compound);
-        spawnedNextBoulders = compound.getBoolean("SpawnedNext");
-        descending = compound.getBoolean("Descending");
-        isMainPath = compound.getBoolean("MainPath");
+    public void readAdditionalSaveData(ValueInput input) {
+        super.readAdditionalSaveData(input);
+        spawnedNextBoulders = input.getBooleanOr("SpawnedNext", false);
+        descending = input.getBooleanOr("Descending", false);
+        isMainPath = input.getBooleanOr("MainPath", false);
     }
 
     public static class EntityBoulderSculptorCrumbling extends EntityBoulderSculptor {
@@ -466,15 +468,15 @@ public class EntityBoulderSculptor extends EntityBoulderProjectile {
         }
 
         @Override
-        public void addAdditionalSaveData(CompoundTag compound) {
-            super.addAdditionalSaveData(compound);
-            compound.putInt("ConsecutiveCrumblers", consecutiveCrumblers);
+        public void addAdditionalSaveData(ValueOutput output) {
+            super.addAdditionalSaveData(output);
+            output.putInt("ConsecutiveCrumblers", consecutiveCrumblers);
         }
 
         @Override
-        public void readAdditionalSaveData(CompoundTag compound) {
-            super.readAdditionalSaveData(compound);
-            consecutiveCrumblers = compound.getInt("ConsecutiveCrumblers");
+        public void readAdditionalSaveData(ValueInput input) {
+            super.readAdditionalSaveData(input);
+            consecutiveCrumblers = input.getIntOr("ConsecutiveCrumblers", 0);
         }
     }
 }

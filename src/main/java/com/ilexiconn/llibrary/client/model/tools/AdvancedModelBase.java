@@ -1,7 +1,7 @@
 package com.ilexiconn.llibrary.client.model.tools;
 
-import net.minecraft.client.renderer.RenderType;
-import net.minecraft.resources.ResourceLocation;
+import net.minecraft.client.renderer.rendertype.RenderType;
+import net.minecraft.resources.Identifier;
 import net.minecraft.util.Mth;
 import net.minecraft.world.entity.Entity;
 
@@ -21,7 +21,7 @@ public abstract class AdvancedModelBase<T extends Entity> extends BasicModelBase
         super();
     }
 
-    protected AdvancedModelBase(Function<ResourceLocation, RenderType> renderTypeFunction) {
+    protected AdvancedModelBase(Function<Identifier, RenderType> renderTypeFunction) {
         super(renderTypeFunction);
     }
 

@@ -14,6 +14,7 @@ import com.bobmowzie.mowziesmobs.server.message.MessagePlayerUseAbility;
 import com.bobmowzie.mowziesmobs.server.message.MessageUseAbility;
 import net.minecraft.world.entity.LivingEntity;
 import net.minecraft.world.entity.player.Player;
+import net.neoforged.neoforge.client.network.ClientPacketDistributor;
 import net.neoforged.neoforge.network.PacketDistributor;
 import org.apache.commons.lang3.ArrayUtils;
 
@@ -69,7 +70,7 @@ public enum AbilityHandler {
     }
 
     public <T extends LivingEntity> void sendAbilityMessage(T entity, AbilityType<?, ?> abilityType) {
-        if (entity.level().isClientSide) {
+        if (entity.level().isClientSide()) {
             return;
         }
         AbilityData data = DataHandler.getData(entity, DataHandler.ABILITY_DATA);
@@ -81,7 +82,7 @@ public enum AbilityHandler {
     }
 
     public <T extends LivingEntity> void sendInterruptAbilityMessage(T entity, AbilityType<?, ?> abilityType) {
-        if (entity.level().isClientSide) {
+        if (entity.level().isClientSide()) {
             return;
         }
         AbilityData data = DataHandler.getData(entity, DataHandler.ABILITY_DATA);
@@ -97,12 +98,15 @@ public enum AbilityHandler {
             return;
         }
 
-        PacketDistributor.sendToServer(new MessagePlayerUseAbility(ArrayUtils.indexOf(DataHandler.getData(entity, DataHandler.ABILITY_DATA).getAbilityTypesOnEntity(entity), ability)));
+        // PacketDistributor.sendToServer(...) no longer exists (that class is now server->client-only sends).
+        // Client->server sends moved to the client-only net.neoforged.neoforge.client.network.ClientPacketDistributor
+        // - safe to reference here since this whole branch is already guarded by entity.level().isClientSide().
+        ClientPacketDistributor.sendToServer(new MessagePlayerUseAbility(ArrayUtils.indexOf(DataHandler.getData(entity, DataHandler.ABILITY_DATA).getAbilityTypesOnEntity(entity), ability)));
     }
 
 
     public <T extends LivingEntity> void sendJumpToSectionMessage(T entity, AbilityType<?, ?> abilityType, int sectionIndex) {
-        if (entity.level().isClientSide) {
+        if (entity.level().isClientSide()) {
             return;
         }
 

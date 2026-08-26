@@ -5,23 +5,28 @@ import com.bobmowzie.mowziesmobs.client.model.LayerHandler;
 import com.bobmowzie.mowziesmobs.client.model.tools.MathUtils;
 import com.bobmowzie.mowziesmobs.server.block.entity.GongBlockEntity;
 import com.mojang.blaze3d.vertex.PoseStack;
-import com.mojang.blaze3d.vertex.VertexConsumer;
 import net.minecraft.client.model.geom.ModelPart;
 import net.minecraft.client.model.geom.PartPose;
 import net.minecraft.client.model.geom.builders.*;
-import net.minecraft.client.renderer.MultiBufferSource;
-import net.minecraft.client.renderer.RenderType;
+import net.minecraft.client.renderer.SubmitNodeCollector;
 import net.minecraft.client.renderer.blockentity.BlockEntityRenderer;
 import net.minecraft.client.renderer.blockentity.BlockEntityRendererProvider;
+import net.minecraft.client.renderer.blockentity.state.BlockEntityRenderState;
+import net.minecraft.client.renderer.feature.ModelFeatureRenderer;
+import net.minecraft.client.renderer.rendertype.RenderType;
+import net.minecraft.client.renderer.rendertype.RenderTypes;
+import net.minecraft.client.renderer.state.level.CameraRenderState;
+import net.minecraft.client.renderer.texture.OverlayTexture;
 import net.minecraft.core.Direction;
-import net.minecraft.resources.ResourceLocation;
+import net.minecraft.resources.Identifier;
 import net.minecraft.util.Mth;
 import net.minecraft.world.phys.AABB;
 import net.minecraft.world.phys.Vec3;
 import org.jetbrains.annotations.NotNull;
+import org.jspecify.annotations.Nullable;
 
-public class GongRenderer implements BlockEntityRenderer<GongBlockEntity> {
-    public static final ResourceLocation TEXTURE = ResourceLocation.fromNamespaceAndPath(MMCommon.MODID, "textures/block/gong.png");
+public class GongRenderer implements BlockEntityRenderer<GongBlockEntity, GongRenderer.GongRenderState> {
+    public static final Identifier TEXTURE = Identifier.fromNamespaceAndPath(MMCommon.MODID, "textures/block/gong.png");
     private final ModelPart gongBase;
     private final ModelPart chain;
 
@@ -56,33 +61,51 @@ public class GongRenderer implements BlockEntityRenderer<GongBlockEntity> {
     }
 
     @Override
-    public void render(GongBlockEntity entity, float delta, PoseStack poseStack, MultiBufferSource buffer, int packedLight, int overlay) {
+    public GongRenderState createRenderState() {
+        return new GongRenderState();
+    }
+
+    @Override
+    public void extractRenderState(GongBlockEntity blockEntity, GongRenderState state, float partialTicks, Vec3 cameraPosition, ModelFeatureRenderer.@Nullable CrumblingOverlay breakProgress) {
+        BlockEntityRenderer.super.extractRenderState(blockEntity, state, partialTicks, cameraPosition, breakProgress);
+        state.ticks = (float) blockEntity.ticks + partialTicks;
+        state.shaking = blockEntity.shaking;
+        state.clickDirection = blockEntity.clickDirection;
+        state.facingAxis = blockEntity.facing.getAxis();
+    }
+
+    @Override
+    public void submit(GongRenderState state, PoseStack poseStack, SubmitNodeCollector submitNodeCollector, CameraRenderState camera) {
         poseStack.pushPose();
         poseStack.translate(0.5, 1.485, 0.5);
         poseStack.mulPose(MathUtils.quatFromRotationXYZ(0, 0, 180, true));
-        if (entity.facing.getAxis() == Direction.Axis.X) {
+        if (state.facingAxis == Direction.Axis.X) {
             poseStack.mulPose(MathUtils.quatFromRotationXYZ(0, 90, 0, true));
         }
 
-        float f = (float)entity.ticks + delta;
         float f1 = 0.0F;
-        if (entity.shaking) {
-            float f3 = Mth.sin(f / (float)Math.PI) / (4.0F + f / 2.0F);
-            if (entity.clickDirection == Direction.NORTH) {
+        if (state.shaking) {
+            float f3 = Mth.sin(state.ticks / (float)Math.PI) / (4.0F + state.ticks / 2.0F);
+            if (state.clickDirection == Direction.NORTH) {
                 f1 = f3;
-            } else if (entity.clickDirection == Direction.SOUTH) {
+            } else if (state.clickDirection == Direction.SOUTH) {
                 f1 = -f3;
-            } else if (entity.clickDirection == Direction.EAST) {
+            } else if (state.clickDirection == Direction.EAST) {
                 f1 = f3;
-            } else if (entity.clickDirection == Direction.WEST) {
+            } else if (state.clickDirection == Direction.WEST) {
                 f1 = -f3;
             }
         }
 
         this.chain.xRot = f1;
 
-        VertexConsumer vertexconsumer = buffer.getBuffer(RenderType.entityCutoutNoCull(TEXTURE));
-        this.gongBase.render(poseStack, vertexconsumer, packedLight, overlay);
+        RenderType renderType = RenderTypes.entityCutout(TEXTURE);
+        submitNodeCollector.submitCustomGeometry(poseStack, renderType, (pose, vertexconsumer) -> {
+            poseStack.pushPose();
+            poseStack.last().set(pose);
+            this.gongBase.render(poseStack, vertexconsumer, state.lightCoords, OverlayTexture.NO_OVERLAY);
+            poseStack.popPose();
+        });
         poseStack.popPose();
     }
 
@@ -94,5 +117,12 @@ public class GongRenderer implements BlockEntityRenderer<GongBlockEntity> {
         bounds = bounds.expandTowards(new Vec3(gong.facing.getCounterClockWise().step()));
         bounds = bounds.expandTowards(0, 2, 0);
         return bounds;
+    }
+
+    public static class GongRenderState extends BlockEntityRenderState {
+        public float ticks;
+        public boolean shaking;
+        public Direction clickDirection;
+        public Direction.Axis facingAxis;
     }
 }

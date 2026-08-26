@@ -5,20 +5,18 @@ import com.bobmowzie.mowziesmobs.client.model.tools.RigUtils;
 import com.bobmowzie.mowziesmobs.client.model.tools.geckolib.MowzieGeoBone;
 import com.bobmowzie.mowziesmobs.client.model.tools.geckolib.MowzieGeoModel;
 import com.bobmowzie.mowziesmobs.server.entity.sculptor.EntitySculptor;
-import net.minecraft.resources.ResourceLocation;
+import com.geckolib.animation.state.AnimationTest;
+import com.geckolib.constant.DataTickets;
+import com.geckolib.renderer.base.GeoRenderState;
+import net.minecraft.resources.Identifier;
 import net.minecraft.util.Mth;
 import net.minecraft.world.phys.Vec3;
 import org.joml.Matrix4f;
 import org.joml.Quaternionf;
 import org.joml.Vector3d;
-import software.bernie.geckolib.animation.AnimationState;
-import software.bernie.geckolib.cache.object.GeoBone;
-import software.bernie.geckolib.constant.DataTickets;
-import software.bernie.geckolib.model.data.EntityModelData;
 
 import java.util.HashMap;
 import java.util.Map;
-import java.util.Optional;
 
 public class ModelSculptor extends MowzieGeoModel<EntitySculptor> {
     public MowzieGeoBone[] beardOriginal;
@@ -29,36 +27,45 @@ public class ModelSculptor extends MowzieGeoModel<EntitySculptor> {
     }
 
     @Override
-    public ResourceLocation getModelResource(EntitySculptor object) {
-        return ResourceLocation.fromNamespaceAndPath(MMCommon.MODID, "geo/sculptor.geo.json");
+    public Identifier getModelResource(GeoRenderState renderState) {
+        return Identifier.fromNamespaceAndPath(MMCommon.MODID, "sculptor");
     }
 
     @Override
-    public ResourceLocation getTextureResource(EntitySculptor object) {
-        return ResourceLocation.fromNamespaceAndPath(MMCommon.MODID, "textures/entity/sculptor.png");
+    public Identifier getTextureResource(GeoRenderState renderState) {
+        return Identifier.fromNamespaceAndPath(MMCommon.MODID, "textures/entity/sculptor.png");
     }
 
     @Override
-    public ResourceLocation getAnimationResource(EntitySculptor object) {
-        return ResourceLocation.fromNamespaceAndPath(MMCommon.MODID, "animations/sculptor.animation.json");
+    public Identifier getAnimationResource(EntitySculptor object) {
+        return Identifier.fromNamespaceAndPath(MMCommon.MODID, "sculptor");
     }
 
-    @Override
-    public void setCustomAnimations(EntitySculptor entity, long instanceId, AnimationState<EntitySculptor> animationState) {
-        GeoBone head = this.getBone("head").get();
-        GeoBone chestJoint = this.getBone("chestJoint").get();
-        GeoBone handClosedL = this.getBone("handClosedLeft").get();
-        GeoBone handClosedR = this.getBone("handClosedRight").get();
-        GeoBone handOpenL = this.getBone("handOpenLeft").get();
-        GeoBone handOpenR = this.getBone("handOpenRight").get();
-        GeoBone backCloth = this.getBone("clothBack").get();
+    // PORTING NOTE: no longer @Override - GeckoLib 5's GeoModel has no such hook anymore (the per-frame custom
+    // bone-animation entry point moved to GeoRenderer#adjustModelBonesForRender, in client/render/**, out of this
+    // agent's scope). Kept as a plain method with the same name/parameters (AnimationState -> AnimationTest) so it
+    // can be invoked from there once that renderer-side wiring exists. See MowzieGeoModel's class javadoc.
+    public void setCustomAnimations(EntitySculptor entity, long instanceId, AnimationTest<EntitySculptor> animationState) {
+        MowzieGeoBone head = this.getMowzieBone("head");
+        MowzieGeoBone chestJoint = this.getMowzieBone("chestJoint");
+        MowzieGeoBone handClosedL = this.getMowzieBone("handClosedLeft");
+        MowzieGeoBone handClosedR = this.getMowzieBone("handClosedRight");
+        MowzieGeoBone handOpenL = this.getMowzieBone("handOpenLeft");
+        MowzieGeoBone handOpenR = this.getMowzieBone("handOpenRight");
+        MowzieGeoBone backCloth = this.getMowzieBone("clothBack");
 
-        EntityModelData entityData = animationState.getData(DataTickets.ENTITY_MODEL_DATA);
+        // PORTING NOTE: GeckoLib 5 removed EntityModelData/DataTickets.ENTITY_MODEL_DATA entirely (confirmed - no
+        // such class exists anymore in the 5.5.2 source). Replaced with the closest available equivalent tickets:
+        // ENTITY_PITCH for headPitch, and (ENTITY_YAW - ENTITY_BODY_YAW) for netHeadYaw (head look yaw relative to
+        // body yaw) - both sourced from LivingEntityRenderState via GeckoLib's OverridingDataTicket mechanism.
+        // UNVERIFIED at runtime (could not compile/test) - flagged in the porting report.
+        float headPitch = animationState.getData(DataTickets.ENTITY_PITCH);
+        float netHeadYaw = animationState.getData(DataTickets.ENTITY_YAW) - animationState.getData(DataTickets.ENTITY_BODY_YAW);
         float torsoAimController = getControllerValue("torsoAimController");
-        head.setRotX(head.getRotX() + entityData.headPitch() * ((float) Math.PI / 180F) * (1.0f - torsoAimController));
-        head.setRotY(head.getRotY() + entityData.netHeadYaw() * ((float) Math.PI / 180F) * (1.0f - torsoAimController));
-        chestJoint.setRotX(chestJoint.getRotX() + entityData.headPitch() * ((float) Math.PI / 180F) * torsoAimController);
-        chestJoint.setRotY(chestJoint.getRotY() + entityData.netHeadYaw() * ((float) Math.PI / 180F) * torsoAimController);
+        head.setRotX(head.getRotX() + headPitch * ((float) Math.PI / 180F) * (1.0f - torsoAimController));
+        head.setRotY(head.getRotY() + netHeadYaw * ((float) Math.PI / 180F) * (1.0f - torsoAimController));
+        chestJoint.setRotX(chestJoint.getRotX() + headPitch * ((float) Math.PI / 180F) * torsoAimController);
+        chestJoint.setRotY(chestJoint.getRotY() + netHeadYaw * ((float) Math.PI / 180F) * torsoAimController);
 
         if (entity.isAlive()) {
             idleAnim(entity, animationState);
@@ -101,9 +108,9 @@ public class ModelSculptor extends MowzieGeoModel<EntitySculptor> {
         beadsDirections.put(this.getMowzieBone("bead8"), new Vec3(0, -0.25, 0.75));
         beadsDirections.put(this.getMowzieBone("bead9"), new Vec3(0, -0.25, 0.75));
 
-        GeoBone headJoint = this.getBone("headJoint").get();
+        MowzieGeoBone headJoint = this.getMowzieBone("headJoint");
         Vec3 headPos = new Vec3(headJoint.getPivotX(), headJoint.getPivotY(), headJoint.getPivotZ());
-        GeoBone head = this.getBone("head").get();
+        MowzieGeoBone head = this.getMowzieBone("head");
         Vec3 headDir = new Vec3(0, 0, -1).normalize();
         headDir = headDir.yRot(head.getRotY()).xRot(head.getRotX());
         for (Map.Entry<MowzieGeoBone, Vec3> beadDir : beadsDirections.entrySet()) {
@@ -240,8 +247,8 @@ public class ModelSculptor extends MowzieGeoModel<EntitySculptor> {
         backItem.setScale(1.2f);
     }
 
-    private void idleAnim(EntitySculptor entity, AnimationState<?> animationState) {
-        float frame = entity.frame + animationState.getPartialTick();
+    private void idleAnim(EntitySculptor entity, AnimationTest<?> animationState) {
+        float frame = entity.frame + animationState.renderState().getPartialTick();
 
         MowzieGeoBone eyebrowRight = this.getMowzieBone("eyebrowRight");
         MowzieGeoBone eyebrowLeft = this.getMowzieBone("eyebrowLeft");
@@ -324,18 +331,18 @@ public class ModelSculptor extends MowzieGeoModel<EntitySculptor> {
 
             for (int i = 0; i < GAUNTLET_ASSEMBLE_ORDER.length; i++) {
                 String boneName = GAUNTLET_ASSEMBLE_ORDER[i];
-                Optional<GeoBone> bone = getBone(boneName);
+                MowzieGeoBone bone = getMowzieBone(boneName);
                 float waitForControllerValue = (float) i / (float) GAUNTLET_ASSEMBLE_ORDER.length + 0.2f;
-                if (bone.isPresent()) {
-                    bone.get().setHidden(gauntletProgress < waitForControllerValue);
+                if (bone != null) {
+                    bone.setHidden(gauntletProgress < waitForControllerValue);
                 }
                 else {
                     System.out.println("Missing bone " + boneName);
                 }
 
-                Optional<GeoBone> boneUnparented = getBone(boneName + "Unparented");
-                if (boneUnparented.isPresent()) {
-                    boneUnparented.get().setHidden(gauntletProgress >= waitForControllerValue || gauntletProgress < waitForControllerValue - 0.1);
+                MowzieGeoBone boneUnparented = getMowzieBone(boneName + "Unparented");
+                if (boneUnparented != null) {
+                    boneUnparented.setHidden(gauntletProgress >= waitForControllerValue || gauntletProgress < waitForControllerValue - 0.1);
                 }
                 else {
                     System.out.println("Missing bone " + boneName + "Unparented");

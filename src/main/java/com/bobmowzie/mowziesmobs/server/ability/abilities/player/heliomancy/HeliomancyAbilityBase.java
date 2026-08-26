@@ -30,7 +30,7 @@ public abstract class HeliomancyAbilityBase extends PlayerAbility {
 
     @Override
     public boolean canUse() {
-        if (getUser() == null || !getUser().getInventory().getSelected().isEmpty()) return false;
+        if (getUser() == null || !getUser().getInventory().getSelectedItem().isEmpty()) return false;
         return getUser().hasEffect(EffectHandler.SUNS_BLESSING) && super.canUse();
     }
 }

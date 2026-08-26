@@ -19,19 +19,21 @@ import net.minecraft.world.entity.ai.attributes.Attributes;
 import net.minecraft.world.entity.item.ItemEntity;
 import net.minecraft.world.level.Level;
 import net.minecraft.world.level.block.state.BlockState;
+import net.minecraft.world.level.storage.ValueInput;
+import net.minecraft.world.level.storage.ValueOutput;
 import net.minecraft.world.phys.Vec3;
-import software.bernie.geckolib.animatable.GeoEntity;
-import software.bernie.geckolib.animation.AnimatableManager;
-import software.bernie.geckolib.animation.AnimationState;
-import software.bernie.geckolib.animation.PlayState;
-import software.bernie.geckolib.animation.RawAnimation;
+import com.geckolib.animatable.GeoEntity;
+import com.geckolib.animatable.manager.AnimatableManager;
+import com.geckolib.animation.state.AnimationTest;
+import com.geckolib.animation.object.PlayState;
+import com.geckolib.animation.RawAnimation;
 
 import java.util.List;
 
 public class EntityEarthSpike extends EntityGeomancyBase {
     private boolean emerged = false;
     private int damageDelay = -1;
-    protected MowzieAnimationController<EntityEarthSpike> controller = new MowzieAnimationController<>(this, "controller", 0, this::predicate, 0);
+    protected MowzieAnimationController<EntityEarthSpike> controller = new MowzieAnimationController<>("controller", 0, this::predicate);
 
     public EntityEarthSpike(EntityType<? extends EntityMagicEffect> type, Level worldIn) {
         super(type, worldIn);
@@ -103,20 +105,20 @@ public class EntityEarthSpike extends EntityGeomancyBase {
     }
 
     @Override
-    public void readAdditionalSaveData(CompoundTag compound) {
-        super.readAdditionalSaveData(compound);
-        emerged = compound.getBoolean("emerged");
+    public void readAdditionalSaveData(ValueInput input) {
+        super.readAdditionalSaveData(input);
+        emerged = input.getBooleanOr("emerged", false);
     }
 
     @Override
-    public void addAdditionalSaveData(CompoundTag compound) {
-        super.addAdditionalSaveData(compound);
-        compound.putBoolean("emerged", emerged);
+    public void addAdditionalSaveData(ValueOutput output) {
+        super.addAdditionalSaveData(output);
+        output.putBoolean("emerged", emerged);
     }
 
     private static RawAnimation EMERGE = RawAnimation.begin().thenPlay("emerge");
-    protected <E extends GeoEntity> PlayState predicate(AnimationState<E> event) {
-        event.getController().setAnimation(EMERGE);
+    protected <E extends GeoEntity> PlayState predicate(AnimationTest<E> event) {
+        event.controller().setAnimation(EMERGE);
         return PlayState.CONTINUE;
     }
 

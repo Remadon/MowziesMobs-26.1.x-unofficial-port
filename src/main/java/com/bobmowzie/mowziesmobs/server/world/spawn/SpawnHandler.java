@@ -114,7 +114,12 @@ public class SpawnHandler {
         }
     }
 
+    // PORTING NOTE (1.21.1 -> 26.1.2): MobSpawnSettings.SpawnerData dropped its "weight" field (now
+    // (EntityType, minCount, maxCount) only) - the weight moved out to the enclosing WeightedList<SpawnerData>
+    // itself (confirmed against real 26.1.2 MobSpawnSettings source). NeoForge's MobSpawnSettingsBuilder#getSpawner
+    // now returns a WeightedList.Builder<SpawnerData>, whose add(item, weight) 2-arg overload is the direct
+    // replacement for passing weight through the SpawnerData constructor.
     private static void registerEntityWorldSpawn(ModifiableBiomeInfo.BiomeInfo.Builder builder, EntityType<?> entity, ConfigHandler.SpawnConfig spawnConfig, MobCategory classification) {
-    	builder.getMobSpawnSettings().getSpawner(classification).add(new MobSpawnSettings.SpawnerData(entity, spawnConfig.spawnRate.get(), spawnConfig.minGroupSize.get(), spawnConfig.maxGroupSize.get()));
+    	builder.getMobSpawnSettings().getSpawner(classification).add(new MobSpawnSettings.SpawnerData(entity, spawnConfig.minGroupSize.get(), spawnConfig.maxGroupSize.get()), spawnConfig.spawnRate.get());
     }
 }

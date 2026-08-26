@@ -46,7 +46,7 @@ public class EntityIceBreath extends EntityMagicEffect {
     public void tick() {
         super.tick();
         if (tickCount == 1) {
-            if (level().isClientSide) {
+            if (level().isClientSide()) {
                 MMCommon.PROXY.playIceBreathSound(this);
             }
         }
@@ -54,7 +54,7 @@ public class EntityIceBreath extends EntityMagicEffect {
         if (getCaster() != null && !getCaster().isAlive()) this.discard() ;
         if (tickCount == 1) playSound(MMSounds.ENTITY_FROSTMAW_ICEBREATH_START.get(), 1, 0.6f);
         if (getCaster() instanceof Player player) {
-            absMoveTo(player.getX(), player.getEyeY() - 0.5f, player.getZ(), player.getYRot(), player.getXRot());
+            snapTo(player.getX(), player.getEyeY() - 0.5f, player.getZ(), player.getYRot(), player.getXRot());
             AbilityData abilityData = DataHandler.getData(player, DataHandler.ABILITY_DATA);
             if (!abilityData.getAbilityFromType(AbilityHandler.ICE_BREATH_ABILITY).isUsing()) {
                 this.discard();
@@ -68,9 +68,9 @@ public class EntityIceBreath extends EntityMagicEffect {
         float xComp = (float) (Math.sin(yaw) * Math.cos(pitch));
         float yComp = (float) (Math.sin(pitch));
         float zComp = (float) (Math.cos(yaw) * Math.cos(pitch));
-        if (level().isClientSide) {
+        if (level().isClientSide()) {
             Camera camera = Minecraft.getInstance().gameRenderer.getMainCamera();
-            boolean overrideLimiter = camera.getPosition().distanceToSqr(getX(), getY(), getZ()) < 64 * 64;
+            boolean overrideLimiter = camera.position().distanceToSqr(getX(), getY(), getZ()) < 64 * 64;
             if (tickCount % 8 == 0) {
                 level().addAlwaysVisibleParticle(new ParticleRing.Data(yaw, -pitch, 40, 1f, 1f, 1f, 1f, (int) (110 * spread), false, ParticleRing.EnumRingBehavior.GROW), overrideLimiter, getX(), getY(), getZ(), 0.5f * xComp, 0.5f * yComp, 0.5f * zComp);
             }
@@ -105,7 +105,7 @@ public class EntityIceBreath extends EntityMagicEffect {
             if (entityHit == getCaster()) continue;
             if (entityHit instanceof ItemEntity) continue;
 
-            if (entityHit.getType().is(EntityTypeTags.FREEZE_IMMUNE_ENTITY_TYPES) || entityHit instanceof EnderDragon) continue;
+            if (entityHit.is(EntityTypeTags.FREEZE_IMMUNE_ENTITY_TYPES) || entityHit instanceof EnderDragon) continue;
 
             float entityHitYaw = (float) ((Math.atan2(entityHit.getZ() - getZ(), entityHit.getX() - getX()) * (180 / Math.PI) - 90) % 360);
             float entityAttackingYaw = getYRot() % 360;
@@ -139,7 +139,7 @@ public class EntityIceBreath extends EntityMagicEffect {
                 // Do raycast check to prevent damaging through walls
                 if (!raytraceCheckEntity(entityHit)) continue;
 
-                if (entityHit.hurt(damageSources().freeze(), damage) && entityHit instanceof LivingEntity) {
+                if (entityHit.hurtOrSimulate(damageSources().freeze(), damage) && entityHit instanceof LivingEntity) {
                     entityHit.setDeltaMovement(entityHit.getDeltaMovement().multiply(0.25, 1, 0.25));
                     DataHandler.getData(entityHit, DataHandler.FROZEN_DATA).addFreezeProgress((LivingEntity) entityHit, 0.23f);
                 }

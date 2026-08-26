@@ -6,7 +6,7 @@ import com.bobmowzie.mowziesmobs.server.ability.AbilityType;
 import com.bobmowzie.mowziesmobs.server.entity.MowzieGeckoEntity;
 import net.minecraft.sounds.SoundEvent;
 import net.minecraft.world.entity.LivingEntity;
-import software.bernie.geckolib.animation.RawAnimation;
+import com.geckolib.animation.RawAnimation;
 
 public class MeleeAttackAbility<T extends MowzieGeckoEntity> extends Ability<T> {
     protected SoundEvent attackSound;

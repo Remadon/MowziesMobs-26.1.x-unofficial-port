@@ -13,8 +13,8 @@ import java.util.Locale;
 
 public enum PawType {
     FULL(MobEffects.WEAKNESS, ParticleHandler.MOON_FULL),
-    GIBBOUS(MobEffects.MOVEMENT_SLOWDOWN, ParticleHandler.MOON_GIBBOUS),
-    HALF(MobEffects.DIG_SLOWDOWN, ParticleHandler.MOON_HALF),
+    GIBBOUS(MobEffects.SLOWNESS, ParticleHandler.MOON_GIBBOUS),
+    HALF(MobEffects.MINING_FATIGUE, ParticleHandler.MOON_HALF),
     CRESCENT(EffectHandler.FRAGILITY, ParticleHandler.MOON_CRESCENT),
     NEW(EffectHandler.ECLIPSED, ParticleHandler.MOON_NEW);
 

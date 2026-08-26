@@ -9,7 +9,7 @@ import net.minecraft.core.Direction;
 import net.minecraft.sounds.SoundSource;
 import net.minecraft.util.StringRepresentable;
 import net.minecraft.world.InteractionHand;
-import net.minecraft.world.ItemInteractionResult;
+import net.minecraft.world.InteractionResult;
 import net.minecraft.world.entity.Entity;
 import net.minecraft.world.entity.LivingEntity;
 import net.minecraft.world.entity.player.Player;
@@ -17,9 +17,11 @@ import net.minecraft.world.entity.projectile.Projectile;
 import net.minecraft.world.item.Item;
 import net.minecraft.world.item.ItemStack;
 import net.minecraft.world.item.context.BlockPlaceContext;
+import net.minecraft.util.RandomSource;
 import net.minecraft.world.level.BlockGetter;
 import net.minecraft.world.level.Level;
-import net.minecraft.world.level.LevelAccessor;
+import net.minecraft.world.level.LevelReader;
+import net.minecraft.world.level.ScheduledTickAccess;
 import net.minecraft.world.level.block.*;
 import net.minecraft.world.level.block.entity.BlockEntity;
 import net.minecraft.world.level.block.entity.BlockEntityTicker;
@@ -38,7 +40,7 @@ import org.jetbrains.annotations.Nullable;
 
 public class GongBlock extends BaseEntityBlock {
     public static final MapCodec<GongBlock> CODEC = simpleCodec(GongBlock::new);
-    public static final DirectionProperty FACING = HorizontalDirectionalBlock.FACING;
+    public static final EnumProperty<Direction> FACING = HorizontalDirectionalBlock.FACING;
 //    public static final EnumProperty<BellAttachType> ATTACHMENT = BlockStateProperties.BELL_ATTACHMENT;
     public static final BooleanProperty POWERED = BlockStateProperties.POWERED;
     private static final VoxelShape NORTH_SOUTH_SHAPE = Block.box(0.0D, 0.0D, 4.0D, 16.0D, 16.0D, 12.0D);
@@ -79,8 +81,8 @@ public class GongBlock extends BaseEntityBlock {
     }
 
     @Override
-    protected ItemInteractionResult useItemOn(ItemStack stack, BlockState state, Level level, BlockPos pos, Player player, InteractionHand hand, BlockHitResult hitResult) {
-        return onHit(level, state, hitResult, player, true) ? ItemInteractionResult.sidedSuccess(level.isClientSide()) : ItemInteractionResult.PASS_TO_DEFAULT_BLOCK_INTERACTION;
+    protected InteractionResult useItemOn(ItemStack stack, BlockState state, Level level, BlockPos pos, Player player, InteractionHand hand, BlockHitResult hitResult) {
+        return onHit(level, state, hitResult, player, true) ? (level.isClientSide() ? InteractionResult.SUCCESS : InteractionResult.SUCCESS_SERVER) : InteractionResult.TRY_WITH_EMPTY_HAND;
     }
 
     public boolean onHit(Level level, BlockState state, BlockHitResult result, @Nullable Player player, boolean p_49706_) {
@@ -112,7 +114,7 @@ public class GongBlock extends BaseEntityBlock {
 
     public boolean attemptToRing(@javax.annotation.Nullable Entity p_152189_, Level p_152190_, BlockPos p_152191_, @javax.annotation.Nullable Direction p_152192_) {
         BlockEntity blockentity = p_152190_.getBlockEntity(p_152191_);
-        if (!p_152190_.isClientSide && blockentity instanceof GongBlockEntity) {
+        if (!p_152190_.isClientSide() && blockentity instanceof GongBlockEntity) {
             if (p_152192_ == null) {
                 p_152192_ = p_152190_.getBlockState(p_152191_).getValue(FACING);
             }
@@ -211,7 +213,7 @@ public class GongBlock extends BaseEntityBlock {
     @Override
     public void setPlacedBy(Level level, BlockPos pos, BlockState state, @javax.annotation.Nullable LivingEntity entity, ItemStack itemStack) {
         super.setPlacedBy(level, pos, state, entity, itemStack);
-        if (!level.isClientSide) {
+        if (!level.isClientSide()) {
             for (int i = 0; i < 3; i++) {
                 BlockPos abovePos = pos.above(i);
                 BlockPos blockpos1 = abovePos.relative(state.getValue(FACING).getClockWise());
@@ -223,7 +225,10 @@ public class GongBlock extends BaseEntityBlock {
                 if (blockpos2 != pos) {
                     level.setBlock(blockpos2, defaultGongPart.setValue(FACING, state.getValue(FACING)).setValue(GongPartBlock.PART, GongPart.CENTER).setValue(GongPartBlock.Y_OFFSET, i), 3);
                 }
-                level.blockUpdated(abovePos, Blocks.AIR);
+                // PORTING NOTE (1.21.1 -> 26.1.2): Level#blockUpdated(BlockPos, Block) is gone - confirmed against
+                // real 26.1.2 Level source, replaced by neighborChanged(BlockPos, Block, @Nullable Orientation)
+                // (same "notify this position of a nearby change" semantics, now also threading an Orientation).
+                level.neighborChanged(abovePos, Blocks.AIR, null);
                 state.updateNeighbourShapes(level, abovePos, 3);
             }
         }
@@ -232,7 +237,7 @@ public class GongBlock extends BaseEntityBlock {
 
     @Override
     public BlockState playerWillDestroy(Level level, BlockPos pos, BlockState state, Player player) {
-        if (!level.isClientSide && player.isCreative()) {
+        if (!level.isClientSide() && player.isCreative()) {
             for (int i = 0; i <= 2; i++) {
                 BlockPos abovePos = pos.above(i);
                 BlockPos blockpos1 = abovePos.relative(state.getValue(FACING).getClockWise());
@@ -279,7 +284,9 @@ public class GongBlock extends BaseEntityBlock {
     public static class GongPartBlock extends HorizontalDirectionalBlock {
         public static final MapCodec<GongPartBlock> CODEC = simpleCodec(GongPartBlock::new);
 
-        public static final DirectionProperty FACING = HorizontalDirectionalBlock.FACING;
+        // PORTING NOTE (1.21.1 -> 26.1.2): DirectionProperty was removed - HorizontalDirectionalBlock.FACING is now
+        // typed EnumProperty<Direction> directly (confirmed against real 26.1.2 HorizontalDirectionalBlock source).
+        public static final EnumProperty<Direction> FACING = HorizontalDirectionalBlock.FACING;
         public static final BooleanProperty POWERED = BlockStateProperties.POWERED;
         public static final EnumProperty<GongPart> PART = EnumProperty.create("gong_part", GongPart.class);
         public static final IntegerProperty Y_OFFSET = IntegerProperty.create("y_offset", 0, 2);
@@ -304,7 +311,7 @@ public class GongBlock extends BaseEntityBlock {
         }
 
         @Override
-        protected @NotNull ItemInteractionResult useItemOn(ItemStack stack, BlockState state, Level level, BlockPos pos, Player player, InteractionHand hand, BlockHitResult hitResult) {
+        protected @NotNull InteractionResult useItemOn(ItemStack stack, BlockState state, Level level, BlockPos pos, Player player, InteractionHand hand, BlockHitResult hitResult) {
             BlockPos basePos = getBasePos(state, pos);
             BlockState baseState = level.getBlockState(basePos);
 
@@ -339,14 +346,18 @@ public class GongBlock extends BaseEntityBlock {
             return super.playerWillDestroy(level, pos, state, player);
         }
 
+        // PORTING NOTE (1.21.1 -> 26.1.2): BlockBehaviour#updateShape's parameter list changed - confirmed against
+        // real 26.1.2 BlockBehaviour source: old (state, direction, neighborState, level LevelAccessor, pos,
+        // neighborPos) -> new (state, level LevelReader, ticks ScheduledTickAccess, pos, directionToNeighbour,
+        // neighborPos, neighborState, random RandomSource). Reordered/rethreaded accordingly.
         @Override
-        public BlockState updateShape(BlockState state, Direction direction, BlockState state1, LevelAccessor level, BlockPos pos, BlockPos pos1) {
+        protected BlockState updateShape(BlockState state, LevelReader level, ScheduledTickAccess ticks, BlockPos pos, Direction directionToNeighbour, BlockPos neighbourPos, BlockState neighbourState, RandomSource random) {
             BlockPos basePos = getBasePos(state, pos);
             BlockState baseState = level.getBlockState(basePos);
             if (!baseState.is(BlockHandler.GONG.get())) {
                 return Blocks.AIR.defaultBlockState();
             }
-            return super.updateShape(state, direction, state1, level, pos, pos1);
+            return super.updateShape(state, level, ticks, pos, directionToNeighbour, neighbourPos, neighbourState, random);
         }
 
         @Override

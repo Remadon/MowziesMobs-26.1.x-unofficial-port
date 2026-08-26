@@ -1,100 +1,154 @@
 package com.bobmowzie.mowziesmobs.client.render.entity.player;
 
-import com.bobmowzie.mowziesmobs.client.model.entity.ModelBipedAnimated;
 import com.bobmowzie.mowziesmobs.client.model.entity.ModelGeckoPlayerThirdPerson;
-import com.bobmowzie.mowziesmobs.client.model.entity.ModelPlayerAnimated;
-import com.bobmowzie.mowziesmobs.client.model.tools.MathUtils;
-import com.bobmowzie.mowziesmobs.client.model.tools.geckolib.MowzieGeoBone;
-import com.bobmowzie.mowziesmobs.client.render.entity.FrozenRenderHandler;
-import com.bobmowzie.mowziesmobs.client.render.entity.layer.*;
+import com.bobmowzie.mowziesmobs.client.render.entity.layer.GeckoPlayerItemInHandLayer;
+import com.bobmowzie.mowziesmobs.client.render.entity.layer.SolarFlareLayer;
+import com.geckolib.constant.dataticket.DataTicket;
+import com.geckolib.renderer.GeoObjectRenderer;
+import com.geckolib.renderer.base.BoneSnapshots;
+import com.geckolib.renderer.base.GeoRenderState;
+import com.geckolib.renderer.base.RenderPassInfo;
 import com.mojang.blaze3d.vertex.PoseStack;
-import com.mojang.blaze3d.vertex.VertexConsumer;
 import com.mojang.math.Axis;
-import net.minecraft.client.Minecraft;
 import net.minecraft.client.model.HumanoidModel;
-import net.minecraft.client.model.PlayerModel;
-import net.minecraft.client.model.geom.ModelLayers;
 import net.minecraft.client.player.AbstractClientPlayer;
-import net.minecraft.client.renderer.MultiBufferSource;
-import net.minecraft.client.renderer.RenderType;
-import net.minecraft.client.renderer.entity.EntityRendererProvider;
-import net.minecraft.client.renderer.entity.layers.*;
-import net.minecraft.client.renderer.entity.player.PlayerRenderer;
-import net.minecraft.core.Direction;
-import net.minecraft.resources.ResourceLocation;
+import net.minecraft.client.renderer.SubmitNodeCollector;
+import net.minecraft.client.renderer.entity.player.AvatarRenderer;
+import net.minecraft.client.renderer.state.level.CameraRenderState;
 import net.minecraft.util.Mth;
-import net.minecraft.world.InteractionHand;
 import net.minecraft.world.entity.HumanoidArm;
-import net.minecraft.world.entity.LivingEntity;
-import net.minecraft.world.entity.Pose;
 import net.minecraft.world.entity.player.PlayerModelPart;
 import net.minecraft.world.phys.Vec3;
-import net.neoforged.neoforge.client.event.RenderNameTagEvent;
-import net.neoforged.neoforge.common.NeoForge;
-import org.joml.Matrix3f;
 import org.joml.Matrix4f;
 import org.joml.Vector4f;
-import software.bernie.geckolib.animation.AnimatableManager;
-import software.bernie.geckolib.animation.AnimationState;
-import software.bernie.geckolib.cache.object.BakedGeoModel;
-import software.bernie.geckolib.cache.object.GeoBone;
-import software.bernie.geckolib.cache.texture.AnimatableTexture;
-import software.bernie.geckolib.constant.DataTickets;
-import software.bernie.geckolib.model.GeoModel;
-import software.bernie.geckolib.model.data.EntityModelData;
-import software.bernie.geckolib.renderer.GeoRenderer;
-import software.bernie.geckolib.renderer.layer.GeoRenderLayer;
-import software.bernie.geckolib.util.RenderUtil;
 
 import java.util.HashMap;
-import java.util.List;
 
-public class GeckoRenderPlayer extends PlayerRenderer implements GeoRenderer<GeckoPlayer> {
+/**
+ * PORTING NOTE (1.21.1 -> 26.1.2): full redesign, not a mechanical port. Read this class's javadoc before touching
+ * it again - the old approach (dual-inherit {@code PlayerRenderer}/{@code GeoRenderer<GeckoPlayer>}, drive vanilla
+ * {@code PlayerModel}'s swappable layer parts from GeckoLib bone world matrices) is categorically impossible against
+ * 26.1.2 + GeckoLib 5.5.2 for reasons enumerated below. This is a genuinely different architecture that preserves
+ * the core observable behaviour (the player's own body visibly performs GeckoLib animations during abilities, in
+ * both perspectives) while dropping one piece (vanilla decorative-layer bone-matching) that is provably not
+ * achievable with the current public API - see "What's dropped" at the bottom.
+ * <p>
+ * <b>Why the old approach is dead:</b>
+ * <ul>
+ *   <li>{@code PlayerRenderer} was replaced by {@code AvatarRenderer<AvatarlikeEntity extends Avatar &
+ *       ClientAvatarEntity>}, which now extends {@code LivingEntityRenderer<AvatarlikeEntity, AvatarRenderState,
+ *       PlayerModel>} (not generic in the model any more) - the old "extend PlayerRenderer, replace this.model with
+ *       a matrix-mode ModelPlayerAnimated, iterate this.layers manually" technique has no equivalent shape.</li>
+ *   <li>{@code PlayerModel}'s clothing-layer parts ({@code jacket}/{@code leftSleeve}/{@code rightSleeve}/
+ *       {@code leftPants}/{@code rightPants}) are now {@code public final ModelPart} - can't be swapped for a
+ *       {@code ModelPartMatrix} stand-in any more (see {@code ModelPlayerAnimated.java}).</li>
+ *   <li>Even if they could be swapped: GeckoLib 5 does not expose a bone's full world transform (rotation/matrix)
+ *       outside of its own live render traversal any more. Confirmed by reading the real GeckoLib 5.5.2 source
+ *       (decompiled): {@code GeoBone#frameSnapshot} (where a bone's animated pose lives) is created fresh and NULLED
+ *       again in a {@code finally} block around each {@code RenderPassInfo#renderPosed(Runnable)} call - i.e. it is
+ *       valid ONLY for the duration of that one bone's own draw call. The one supported way to observe a bone's pose
+ *       from outside is {@code RenderPassInfo#addBonePositionListener}, and its callback is strictly
+ *       position-only (world/model/local {@code Vec3}, no rotation) by its own declared interface
+ *       ({@code BonePositionListener.accept(Vec3, Vec3, Vec3)}). There is no supported way left to extract a bone's
+ *       rotation for use by a second, unrelated renderer (like vanilla's {@code AvatarRenderer}/{@code PlayerModel}).</li>
+ *   <li>NeoForge's render-cancellation hooks changed too: {@code RenderLivingEvent.Pre}/{@code RenderPlayerEvent.Pre}
+ *       (confirmed by inspecting the real NeoForge 26.1.2.95 classes) dropped {@code getEntity()} entirely - they
+ *       only expose an already-captured, back-reference-free {@code AvatarRenderState} snapshot. The old
+ *       "cancel + call our own renderer with the live entity" technique used from {@code ClientEventHandler} no
+ *       longer has a live entity to call it with from that hook alone.</li>
+ * </ul>
+ * <b>The new design:</b> this class no longer extends any vanilla renderer at all. It's a small, standalone
+ * {@code GeoObjectRenderer<GeckoPlayer, Void, GeoRenderState>} (GeckoLib 5's own sanctioned base class for a
+ * {@code GeoAnimatable} that isn't an {@code Entity}/{@code Item}/block entity - see {@code GeoObjectRenderer}'s
+ * real source; {@code GeckoPlayer} is a plain wrapper object referencing a {@code Player}, not an {@code Entity}
+ * itself, so it was never eligible for {@code GeoEntityRenderer<T extends Entity & GeoAnimatable, R>} either).
+ * {@link #render} is a self-contained entry point (world-position-relative {@code PoseStack} in, GeckoLib pass out)
+ * meant to be invoked in place of vanilla's own player body rendering while a GeckoLib ability animation should be
+ * driving the pose - see "Wiring (cross-scope, not done here)" below.
+ * <p>
+ * <b>Bone-driven procedural pose ({@link #adjustModelBonesForRender}):</b> this is the GeckoLib-5-correct
+ * replacement for the removed GeckoLib-4 "setCustomAnimations" hook - {@code RenderPassInfo.create(...)} registers
+ * {@code renderer::adjustModelBonesForRender} as a {@code BoneUpdater} that runs immediately after the base
+ * keyframe animation controller has populated this frame's bone snapshots but before anything renders them
+ * (confirmed by reading {@code RenderPassInfo.create}: {@code addBoneUpdater(renderer::applyAnimationControllers)}
+ * is added first, {@code addBoneUpdater(renderer::adjustModelBonesForRender)} second - later updaters run later, so
+ * this one's procedural {@code addRotX}/{@code addPos} edits land on top of the keyframe pose, not before it).
+ * {@code MowzieGeoBone.java}'s own class javadoc explicitly calls this out as "out of this agent's scope... see the
+ * porting report" - this file is that follow-up. {@code ModelGeckoBiped#setRotationAngles(...)} (already fully
+ * ported by the model agent, unchanged signature) is invoked from here exactly as the old
+ * {@code GeckoRenderPlayer#actuallyRender} invoked it.
+ * <p>
+ * <b>Attachment points (held item / particle root) - position only:</b> {@link #registerAttachmentListener} uses
+ * {@code RenderPassInfo#addBonePositionListener}, but reads the FULL bone matrix (not just the listener's Vec3
+ * params) by capturing {@code renderPassInfo.poseStack().last().pose()} synchronously from inside the listener
+ * callback - confirmed safe by reading {@code RenderUtil.prepMatrixForBoneAndUpdateListeners}: the listener fires
+ * while {@code poseStack} is pushed to that exact bone's full world transform (translate+rotate+scale), so reading
+ * the live PoseStack from the callback (rather than relying on the listener's derived-position-only parameters)
+ * recovers the same fidelity the old {@code renderRecursively}-based matrix capture had. <b>Known ordering caveat:</b>
+ * {@code SubmitNodeCollector} submissions (and therefore these listener callbacks) are collected now and flushed
+ * later in the frame, not executed synchronously inside {@link #render}. {@link #betweenHandsPos}/
+ * {@link #particleEmitterRoot} are read by unrelated code (ability classes) at arbitrary later times, so they may
+ * lag by up to one render frame versus the old synchronous read. This is imperceptible for a particle spawn point
+ * and is the one timing simplification made here - flagging per the porting rules rather than leaving it silent.
+ * <p>
+ * <b>What's dropped (flagged, not silent):</b> vanilla's decorative player render layers (equipped armor via
+ * {@code HumanoidArmorLayer}, cape, elytra/wings, arrows stuck in the body, bee stinger, spin-attack effect,
+ * parrot-on-shoulder) are NOT rendered while this renderer is driving the pose for an active ability. Those layers
+ * all read their geometry's position/rotation off vanilla's shared {@code PlayerModel} {@code ModelPart} tree, and
+ * as established above there is no supported way any more to slave that tree's rotation to the GeckoLib pose from
+ * outside GeckoLib's own live render pass. Rendering them un-synced would show them floating in the vanilla
+ * arm-swing pose while the visible body performs the ability animation, which is worse than not rendering them.
+ * The GeckoLib rig itself already includes its own clothing-layer geometry (the {@code BodyLayer}/{@code *Layer}
+ * bones baked into {@code animated_player.geo.json}, driven by {@code ModelGeckoPlayerThirdPerson}), so the
+ * skin/clothing silhouette itself is NOT degraded - only externally-attached vanilla decorations are skipped, and
+ * only for the duration of an active ability (vanilla rendering resumes normally the instant no ability is active -
+ * see the {@code ClientEventHandler} wiring note below).
+ * <p>
+ * <b>Wiring (cross-scope, NOT done here):</b> {@code client/ClientEventHandler.java} (out of this agent's scope)
+ * already has {@code onHandRender}/{@code renderLivingEvent} stubs with FIXME headers anticipating exactly this
+ * redesign. The intended wiring, for whoever owns that file: in a handler for
+ * {@code net.neoforged.neoforge.client.event.RenderPlayerEvent.Pre}, resolve the live entity from
+ * {@code event.getRenderState().id} via {@code Minecraft.getInstance().level.getEntity(id)} (RenderPlayerEvent.Pre
+ * does not expose the live entity directly any more - see above), look up
+ * {@code DataHandler.getData(player, DataHandler.PLAYER_DATA).getGeckoPlayer()}, and if an ability is active,
+ * {@code event.setCanceled(true)} and call {@link #render} with {@code event.getPoseStack()}/
+ * {@code event.getSubmitNodeCollector()}/{@code event.getPartialTick()} plus
+ * {@code Minecraft.getInstance().gameRenderer.getGameRenderState().levelRenderState.cameraRenderState} (confirmed
+ * public accessor chain) for the {@code CameraRenderState}. Not performed here per the porting task's file-scope
+ * constraint - flagged clearly rather than reaching outside this agent's 4 assigned files.
+ */
+public class GeckoRenderPlayer extends GeoObjectRenderer<GeckoPlayer, Void, GeoRenderState> {
 
-    public MultiBufferSource rtb;
-    private static HashMap<Class<? extends GeckoPlayer>, GeckoRenderPlayer> modelsToLoad = new HashMap<>();
-    private ModelGeckoPlayerThirdPerson geoModel;
+    private static final HashMap<Class<? extends GeckoPlayer>, GeckoRenderPlayer> modelsToLoad = new HashMap<>();
 
-    private Matrix4f worldRenderMat;
+    private static final DataTicket<AbstractClientPlayer> LIVE_PLAYER =
+            DataTicket.create("mowziesmobs_gecko_render_player_live_player", AbstractClientPlayer.class);
 
+    private final ModelGeckoPlayerThirdPerson geoModel;
+
+    // Left null (not Vec3.ZERO) until the first successful render pass populates them - out-of-scope consumers
+    // (SupernovaAbility, EntitySolarBeam) explicitly null-check these before use, matching the pre-port fields.
     public Vec3 betweenHandsPos;
     public Vec3 particleEmitterRoot;
 
-    private boolean isInvisible = false;
+    private final Matrix4f leftHeldItemPose = new Matrix4f();
+    private final Matrix4f rightHeldItemPose = new Matrix4f();
+    private final Matrix4f particleEmitterRootPose = new Matrix4f();
 
-    private GeckoPlayer animatable;
+    private final GeckoPlayerItemInHandLayer itemInHandLayer = new GeckoPlayerItemInHandLayer(this);
+    private final SolarFlareLayer solarFlareLayer = new SolarFlareLayer(this);
 
-    public GeckoRenderPlayer(EntityRendererProvider.Context context, boolean slim, ModelGeckoPlayerThirdPerson geoModel) {
-        super(context, slim);
-
-        ModelPlayerAnimated<AbstractClientPlayer> modelPlayerAnimated = new ModelPlayerAnimated<>(context.bakeLayer(slim ? ModelLayers.PLAYER_SLIM : ModelLayers.PLAYER), slim);
-        ModelPlayerAnimated.setUseMatrixMode(modelPlayerAnimated, true);
-        this.model = modelPlayerAnimated;
-
-        this.layers.clear();
-        this.addLayer(new GeckoArmorLayer<>(this, new ModelBipedAnimated<>(context.bakeLayer(slim ? ModelLayers.PLAYER_SLIM_INNER_ARMOR : ModelLayers.PLAYER_INNER_ARMOR)), new ModelBipedAnimated<>(context.bakeLayer(slim ? ModelLayers.PLAYER_SLIM_OUTER_ARMOR : ModelLayers.PLAYER_OUTER_ARMOR)), context.getModelManager()));
-        this.addLayer(new GeckoPlayerItemInHandLayer(this));
-        this.addLayer(new ArrowLayer<>(context, this));
-        this.addLayer(new Deadmau5EarsLayer(this));
-        this.addLayer(new GeckoCapeLayer(this));
-        this.addLayer(new CustomHeadLayer<>(this, context.getModelSet(), context.getItemInHandRenderer()));
-        this.addLayer(new GeckoElytraLayer(this, context.getModelSet()));
-        this.addLayer(new GeckoParrotOnShoulderLayer(this, context.getModelSet()));
-        this.addLayer(new SpinAttackEffectLayer<>(this, context.getModelSet()));
-        this.addLayer(new BeeStingerLayer<>(this));
-        this.addLayer(new FrozenRenderHandler.LayerFrozen<>(this));
-        this.addLayer(new SolarFlareLayer(this));
-        this.addLayer(new SunblockLayer<>(this));
-
-
+    public GeckoRenderPlayer(ModelGeckoPlayerThirdPerson geoModel) {
+        super(geoModel);
         this.geoModel = geoModel;
-        this.geoModel.setUseSmallArms(slim);
-
-        worldRenderMat = new Matrix4f();
-        worldRenderMat.identity();
     }
 
     public ModelGeckoPlayerThirdPerson getGeckoModel() {
+        return geoModel;
+    }
+
+    /** Back-compat alias - some out-of-scope {@code client/render/entity/layer/**} files still call this name. */
+    public ModelGeckoPlayerThirdPerson getAnimatedPlayerModel() {
         return geoModel;
     }
 
@@ -102,404 +156,140 @@ public class GeckoRenderPlayer extends PlayerRenderer implements GeoRenderer<Gec
         return modelsToLoad;
     }
 
-    public void render(AbstractClientPlayer entityIn, float entityYaw, float partialTicks, PoseStack matrixStackIn, MultiBufferSource bufferIn, int packedLightIn, GeckoPlayer geckoPlayer) {
-        this.rtb = bufferIn;
-        this.setModelVisibilities(entityIn);
-        renderLiving(entityIn, entityYaw, partialTicks, matrixStackIn, bufferIn, packedLightIn, geckoPlayer);
-    }
-
-    private void setModelVisibilities(AbstractClientPlayer clientPlayer) {
-        ModelGeckoPlayerThirdPerson playermodel = getGeckoModel();
-        if (playermodel.isInitialized()) {
-            if (clientPlayer.isSpectator()) {
-                playermodel.setVisible(false);
-                playermodel.bipedHead().setHidden(false);
-                playermodel.bipedHeadwear().setHidden(false);
-            } else {
-                playermodel.setVisible(true);
-                playermodel.bipedHeadwear().setHidden(!clientPlayer.isModelPartShown(PlayerModelPart.HAT));
-                playermodel.bipedBodywear().setHidden(!clientPlayer.isModelPartShown(PlayerModelPart.JACKET));
-                playermodel.bipedLeftLegwear().setHidden(!clientPlayer.isModelPartShown(PlayerModelPart.LEFT_PANTS_LEG));
-                playermodel.bipedRightLegwear().setHidden(!clientPlayer.isModelPartShown(PlayerModelPart.RIGHT_PANTS_LEG));
-                playermodel.bipedLeftArmwear().setHidden(!clientPlayer.isModelPartShown(PlayerModelPart.LEFT_SLEEVE));
-                playermodel.bipedRightArmwear().setHidden(!clientPlayer.isModelPartShown(PlayerModelPart.RIGHT_SLEEVE));
-                playermodel.isSneak = clientPlayer.isCrouching();
-                HumanoidModel.ArmPose bipedmodel$armpose = getArmPose(clientPlayer, InteractionHand.MAIN_HAND);
-                HumanoidModel.ArmPose bipedmodel$armpose1 = getArmPose(clientPlayer, InteractionHand.OFF_HAND);
-                if (bipedmodel$armpose.isTwoHanded()) {
-                    bipedmodel$armpose1 = clientPlayer.getOffhandItem().isEmpty() ? HumanoidModel.ArmPose.EMPTY : HumanoidModel.ArmPose.ITEM;
-                }
-
-                if (clientPlayer.getMainArm() == HumanoidArm.RIGHT) {
-                    geoModel.rightArmPose = bipedmodel$armpose;
-                    geoModel.leftArmPose = bipedmodel$armpose1;
-                } else {
-                    geoModel.rightArmPose = bipedmodel$armpose1;
-                    geoModel.leftArmPose = bipedmodel$armpose;
-                }
-            }
-        }
-    }
-
-    public void renderLiving(AbstractClientPlayer entityIn, float entityYaw, float partialTicks, PoseStack matrixStackIn, MultiBufferSource bufferIn, int packedLightIn, GeckoPlayer geckoPlayer) {
-        this.animatable = geckoPlayer;
-
-        matrixStackIn.pushPose();
-
-        Minecraft minecraft = Minecraft.getInstance();
-        boolean flag = this.isBodyVisible(entityIn);
-        boolean flag1 = !flag && !entityIn.isInvisibleTo(minecraft.player);
-        boolean flag2 = minecraft.shouldEntityAppearGlowing(entityIn);
-        this.isInvisible = !flag && !flag1 && !flag2;
-        RenderType rendertype = this.getRenderType(entityIn, flag, flag1, flag2);
-        if (this.isInvisible) {
-            rendertype = this.model.renderType(getTextureLocation(geckoPlayer));
-        }
-        if (rendertype != null) {
-            VertexConsumer ivertexbuilder = bufferIn.getBuffer(rendertype);
-            defaultRender(matrixStackIn, animatable, bufferIn, rendertype, ivertexbuilder, 0, partialTicks, packedLightIn);
-        }
-
-        matrixStackIn.popPose();
-        renderEntity(entityIn, entityYaw, partialTicks, matrixStackIn, bufferIn, packedLightIn);
+    @Override
+    public void addRenderData(GeckoPlayer animatable, Void relatedObject, GeoRenderState renderState, float partialTick) {
+        renderState.addGeckolibData(LIVE_PLAYER, (AbstractClientPlayer) animatable.getPlayer());
     }
 
     @Override
-    public List<GeoRenderLayer<GeckoPlayer>> getRenderLayers() {
-        return List.of();
+    public void setMolangQueryValues(GeckoPlayer animatable, Void relatedObject, GeoRenderState renderState, float partialTick) {
+        // No bespoke Molang query data needed for the player rig beyond what GeckoLib captures by default.
     }
 
     @Override
-    public int getPackedOverlay(GeckoPlayer animatable, float u, float partialTick) {
-        AbstractClientPlayer player = (AbstractClientPlayer) animatable.getPlayer();
-        return getOverlayCoords(player, this.getWhiteOverlayProgress(player, partialTick));
+    public void adjustRenderPose(RenderPassInfo<GeoRenderState> renderPassInfo) {
+        // GeoObjectRenderer's default here translates (0.5, 0.51, 0.5) for centered item/block-entity-style
+        // rendering, which does not apply to a player entity rendered at the caller-supplied world-relative
+        // origin - suppress it.
     }
 
     @Override
-    public void actuallyRender(PoseStack poseStack, GeckoPlayer animatable, BakedGeoModel model, RenderType renderType, MultiBufferSource bufferSource, VertexConsumer buffer, boolean isReRender, float partialTick, int packedLight, int packedOverlay, int color) {
-        AbstractClientPlayer entity = (AbstractClientPlayer) animatable.getPlayer();
-        this.model.attackTime = this.getAttackAnim(entity, partialTick);
+    public void adjustModelBonesForRender(RenderPassInfo<GeoRenderState> renderPassInfo, BoneSnapshots snapshots) {
+        AbstractClientPlayer player = renderPassInfo.getGeckolibData(LIVE_PLAYER);
 
-        boolean shouldSit = entity.isPassenger() && (entity.getVehicle() != null && entity.getVehicle().shouldRiderSit());
-        this.model.riding = shouldSit;
-        this.model.young = entity.isBaby();
-        float f_lerpBodyRot = Mth.rotLerp(partialTick, entity.yBodyRotO, entity.yBodyRot);
-        float f1_lerpHeadRot = Mth.rotLerp(partialTick, entity.yHeadRotO, entity.yHeadRot);
-        float f2_netHeadYaw = f1_lerpHeadRot - f_lerpBodyRot;
-        if (shouldSit && entity.getVehicle() instanceof LivingEntity) {
-            LivingEntity livingentity = (LivingEntity)entity.getVehicle();
-            f_lerpBodyRot = Mth.rotLerp(partialTick, livingentity.yBodyRotO, livingentity.yBodyRot);
-            f2_netHeadYaw = f1_lerpHeadRot - f_lerpBodyRot;
-            float f3 = Mth.wrapDegrees(f2_netHeadYaw);
-            if (f3 < -85.0F) {
-                f3 = -85.0F;
-            }
+        if (player == null || !geoModel.isInitialized()) return;
 
-            if (f3 >= 85.0F) {
-                f3 = 85.0F;
-            }
+        applyModelVisibility(player);
 
-            f_lerpBodyRot = f1_lerpHeadRot - f3;
-            if (f3 * f3 > 2500.0F) {
-                f_lerpBodyRot += f3 * 0.2F;
-            }
+        float partialTick = renderPassInfo.renderState().getPartialTick();
+        boolean shouldSit = player.isPassenger() && player.getVehicle() != null && player.getVehicle().shouldRiderSit();
+        float limbSwing = 0.0F;
+        float limbSwingAmount = 0.0F;
 
-            f2_netHeadYaw = f1_lerpHeadRot - f_lerpBodyRot;
+        if (!shouldSit && player.isAlive()) {
+            limbSwingAmount = player.walkAnimation.speed(partialTick);
+            limbSwing = player.walkAnimation.position(partialTick);
+            if (player.isBaby()) limbSwing *= 3.0F;
+            if (limbSwingAmount > 1.0F) limbSwingAmount = 1.0F;
         }
 
-        float f6 = Mth.lerp(partialTick, entity.xRotO, entity.getXRot());
-        if (isEntityUpsideDown(entity)) {
-            f6 *= -1.0F;
-            f2_netHeadYaw *= -1.0F;
-        }
+        float bodyRot = Mth.rotLerp(partialTick, player.yBodyRotO, player.yBodyRot);
+        float headRot = Mth.rotLerp(partialTick, player.yHeadRotO, player.yHeadRot);
+        float netHeadYaw = headRot - bodyRot;
+        float headPitch = Mth.lerp(partialTick, player.xRotO, player.getXRot());
+        float ageInTicks = player.tickCount + partialTick;
 
-        if (entity.hasPose(Pose.SLEEPING)) {
-            Direction direction = entity.getBedOrientation();
-            if (direction != null) {
-                float f4 = entity.getEyeHeight(Pose.STANDING) - 0.1F;
-                poseStack.translate((float)(-direction.getStepX()) * f4, 0.0F, (float)(-direction.getStepZ()) * f4);
-            }
-        }
+        HumanoidModel.ArmPose leftPose = AvatarRenderer.getArmPose(player, HumanoidArm.LEFT);
+        HumanoidModel.ArmPose rightPose = AvatarRenderer.getArmPose(player, HumanoidArm.RIGHT);
+        geoModel.leftArmPose = leftPose;
+        geoModel.rightArmPose = rightPose;
+        geoModel.isSneak = player.isCrouching();
 
-        float f7 = this.getBob(entity, partialTick);
-//        this.setupRotations(entity, poseStack, f7, f_lerpBodyRot, partialTick);   This is where the vanilla function gets called. We move it lower down after animations are handled
-        this.scale(entity, poseStack, partialTick);
-        float f8_limbSwingAmount = 0.0F;
-        float f5_limbSwing = 0.0F;
-        if (!shouldSit && entity.isAlive()) {
-            f8_limbSwingAmount = entity.walkAnimation.speed(partialTick);
-            f5_limbSwing = entity.walkAnimation.position(partialTick);
-            if (entity.isBaby()) {
-                f5_limbSwing *= 3.0F;
-            }
-
-            if (f8_limbSwingAmount > 1.0F) {
-                f8_limbSwingAmount = 1.0F;
-            }
-        }
-
-        if (!isReRender) {
-            float headPitch = Mth.lerp(partialTick, entity.xRotO, entity.getXRot());
-            float motionThreshold = getMotionAnimThreshold(animatable);
-            Vec3 velocity = entity.getDeltaMovement();
-            float avgVelocity = (float)(Math.abs(velocity.x) + Math.abs(velocity.z)) / 2f;
-            AnimationState<GeckoPlayer> animationState = new AnimationState<GeckoPlayer>(animatable, f5_limbSwing, f8_limbSwingAmount, partialTick, avgVelocity >= motionThreshold && f8_limbSwingAmount != 0);
-            long instanceId = getInstanceId(animatable);
-
-            AnimatableManager<GeckoPlayer> animatableManager = animatable.getAnimatableInstanceCache().getManagerForId(instanceId);
-            animationState.setData(DataTickets.TICK, animatable.getTick(animatable) + animatableManager.getFirstTickTime() + partialTick);
-            animationState.setData(DataTickets.ENTITY, entity);
-            animationState.setData(DataTickets.ENTITY_MODEL_DATA, new EntityModelData(shouldSit, entity.isBaby(), -f2_netHeadYaw, -headPitch));
-            this.getGeckoModel().addAdditionalStateData(animatable, instanceId, animationState::setData);
-            this.getGeckoModel().handleAnimations(animatable, instanceId, animationState, partialTick);
-        }
-
-        if (this.geoModel.isInitialized()) {
-            this.setupRotations(entity, poseStack, f7, f_lerpBodyRot, partialTick, f1_lerpHeadRot);
-            float bodyRotateAmount = this.geoModel.getControllerValueInverted("BodyRotateController");
-            this.geoModel.setRotationAngles(entity, f5_limbSwing, f8_limbSwingAmount, f7, Mth.rotLerp(bodyRotateAmount, 0, f2_netHeadYaw), f6, partialTick);
-
-            MowzieGeoBone leftHeldItem = geoModel.getMowzieBone("LeftHeldItem");
-            MowzieGeoBone rightHeldItem = geoModel.getMowzieBone("RightHeldItem");
-
-            Matrix4f worldMatInverted = new Matrix4f(poseStack.last().pose());
-            worldMatInverted.invert();
-            Matrix3f worldNormInverted = new Matrix3f(poseStack.last().normal());
-            worldNormInverted.invert();
-            PoseStack toWorldSpace = new PoseStack();
-            toWorldSpace.mulPose(MathUtils.quatFromRotationXYZ(0, -f_lerpBodyRot + 180, 0, true));
-            toWorldSpace.translate(0, -1.5f, 0);
-            toWorldSpace.last().normal().mul(worldNormInverted);
-            toWorldSpace.last().pose().mul(worldMatInverted);
-
-            Vector4f leftHeldItemPos = new Vector4f(0, 0, 0, 1);
-            leftHeldItemPos.mul(leftHeldItem.getWorldSpaceMatrix());
-            leftHeldItemPos.mul(toWorldSpace.last().pose());
-            Vec3 leftHeldItemPos3 = new Vec3(leftHeldItemPos.x(), leftHeldItemPos.y(), leftHeldItemPos.z());
-
-            Vector4f rightHeldItemPos = new Vector4f(0, 0, 0, 1);
-            rightHeldItemPos.mul(rightHeldItem.getWorldSpaceMatrix());
-            rightHeldItemPos.mul(toWorldSpace.last().pose());
-            Vec3 rightHeldItemPos3 = new Vec3(rightHeldItemPos.x(), rightHeldItemPos.y(), rightHeldItemPos.z());
-
-            betweenHandsPos = rightHeldItemPos3.add(leftHeldItemPos3.subtract(rightHeldItemPos3).scale(0.5));
-
-            MowzieGeoBone particleEmitterRootBone = geoModel.getMowzieBone("ParticleEmitterRoot");
-            Vector4f emitterRootPos = new Vector4f(0, 0, 0, 1);
-            emitterRootPos.mul(particleEmitterRootBone.getWorldSpaceMatrix());
-            emitterRootPos.mul(toWorldSpace.last().pose());
-            particleEmitterRoot = new Vec3(emitterRootPos.x(), emitterRootPos.y(), emitterRootPos.z());
-        }
-
-        poseStack.translate(0, 0.01f, 0);
-
-//        this.modelRenderTranslations = new Matrix4f(poseStack.last().pose());
-
-        if (!entity.isInvisibleTo(Minecraft.getInstance().player))
-            GeoRenderer.super.actuallyRender(poseStack, animatable, model, renderType, bufferSource, buffer, isReRender, partialTick, packedLight, packedOverlay, color);
-
-        ModelPlayerAnimated.copyFromGeckoModel(this.model, geoModel);
-
-        if (!entity.isSpectator()) {
-            for(RenderLayer<AbstractClientPlayer, PlayerModel<AbstractClientPlayer>> layerrenderer : this.layers) {
-                layerrenderer.render(poseStack, bufferSource, packedLight, entity, f5_limbSwing, f8_limbSwingAmount, partialTick, f7, f2_netHeadYaw, f6);
-            }
-        }
+        geoModel.setRotationAngles(player, limbSwing, limbSwingAmount, ageInTicks, netHeadYaw, headPitch, partialTick);
     }
 
-    public void renderEntity(AbstractClientPlayer entityIn, float entityYaw, float partialTicks, PoseStack matrixStackIn, MultiBufferSource bufferIn, int packedLightIn) {
-        RenderNameTagEvent renderNameplateEvent = new RenderNameTagEvent(entityIn, entityIn.getDisplayName(), this, matrixStackIn, bufferIn, packedLightIn, partialTicks);
-        NeoForge.EVENT_BUS.post(renderNameplateEvent);
-        if (renderNameplateEvent.canRender().isTrue() || renderNameplateEvent.canRender().isDefault() && this.shouldShowName(entityIn)) {
-            this.renderNameTag(entityIn, renderNameplateEvent.getContent(), matrixStackIn, bufferIn, packedLightIn, partialTicks);
-        }
-    }
-
-    protected void setupRotations(AbstractClientPlayer entityLiving, PoseStack matrixStackIn, float ageInTicks, float rotationYaw, float partialTicks, float headYaw) {
-        float f = entityLiving.getSwimAmount(partialTicks);
-        if (entityLiving.isFallFlying()) {
-            this.applyRotationsLivingRenderer(entityLiving, matrixStackIn, ageInTicks, rotationYaw, partialTicks, headYaw);
-            float f1 = (float)entityLiving.getFallFlyingTicks() + partialTicks;
-            float f2 = Mth.clamp(f1 * f1 / 100.0F, 0.0F, 1.0F);
-            if (!entityLiving.isAutoSpinAttack()) {
-                matrixStackIn.mulPose(Axis.XP.rotationDegrees(f2 * (-90.0F - entityLiving.getXRot())));
-            }
-
-            Vec3 vector3d = entityLiving.getViewVector(partialTicks);
-            Vec3 vector3d1 = entityLiving.getDeltaMovement();
-            double d0 = vector3d1.horizontalDistanceSqr();
-            double d1 = vector3d.horizontalDistanceSqr();
-            if (d0 > 0.0D && d1 > 0.0D) {
-                double d2 = (vector3d1.x * vector3d.x + vector3d1.z * vector3d.z) / Math.sqrt(d0 * d1);
-                double d3 = vector3d1.x * vector3d.z - vector3d1.z * vector3d.x;
-                matrixStackIn.mulPose(Axis.YP.rotation((float)(Math.signum(d3) * Math.acos(d2))));
-            }
-        } else if (f > 0.0F) {
-            float swimController = this.geoModel.getControllerValueInverted("SwimController");
-            this.applyRotationsLivingRenderer(entityLiving, matrixStackIn, ageInTicks, rotationYaw, partialTicks, headYaw);
-            float f3 = entityLiving.isInWater() || entityLiving.isInFluidType((fluidType, height) -> entityLiving.canSwimInFluidType(fluidType)) ? -90.0F - entityLiving.getXRot() : -90.0F;
-            float f4 = Mth.lerp(f, 0.0F, f3) * swimController;
-            matrixStackIn.mulPose(Axis.XP.rotationDegrees(f4));
-            if (entityLiving.isVisuallySwimming()) {
-                matrixStackIn.translate(0.0D, -1.0D, (double)0.3F);
-            }
+    private void applyModelVisibility(AbstractClientPlayer player) {
+        if (player.isSpectator()) {
+            geoModel.setVisible(false);
+            geoModel.bipedHead().setHidden(false);
+            geoModel.bipedHeadwear().setHidden(false);
         } else {
-            this.applyRotationsLivingRenderer(entityLiving, matrixStackIn, ageInTicks, rotationYaw, partialTicks, headYaw);
-        }
-    }
-
-    protected void applyRotationsLivingRenderer(AbstractClientPlayer entityLiving, PoseStack matrixStackIn, float ageInTicks, float rotationYaw, float partialTicks, float headYaw) {
-        if (this.isShaking(entityLiving)) {
-            rotationYaw += (float)(Math.cos((double)entityLiving.tickCount * 3.25D) * Math.PI * (double)0.4F);
-        }
-
-        Pose pose = entityLiving.getPose();
-        if (pose != Pose.SLEEPING) {
-            float bodyRotateAmount = this.geoModel.getControllerValueInverted("BodyRotateController");
-            matrixStackIn.mulPose(Axis.YP.rotationDegrees(180.0F - Mth.rotLerp(bodyRotateAmount, headYaw, rotationYaw)));
-        }
-
-        if (entityLiving.deathTime > 0) {
-            float f = ((float)entityLiving.deathTime + partialTicks - 1.0F) / 20.0F * 1.6F;
-            f = Mth.sqrt(f);
-            if (f > 1.0F) {
-                f = 1.0F;
-            }
-
-            matrixStackIn.mulPose(Axis.ZP.rotationDegrees(f * this.getFlipDegrees(entityLiving)));
-        } else if (entityLiving.isAutoSpinAttack()) {
-            matrixStackIn.mulPose(Axis.XP.rotationDegrees(-90.0F - entityLiving.getXRot()));
-            matrixStackIn.mulPose(Axis.YP.rotationDegrees(((float)entityLiving.tickCount + partialTicks) * -75.0F));
-        } else if (pose == Pose.SLEEPING) {
-            Direction direction = entityLiving.getBedOrientation();
-            float f1 = direction != null ? getFacingAngle(direction) : rotationYaw;
-            matrixStackIn.mulPose(Axis.YP.rotationDegrees(f1));
-            matrixStackIn.mulPose(Axis.ZP.rotationDegrees(this.getFlipDegrees(entityLiving)));
-            matrixStackIn.mulPose(Axis.YP.rotationDegrees(270.0F));
-        } else if (isEntityUpsideDown(entityLiving)) {
-            matrixStackIn.translate(0.0F, entityLiving.getBbHeight() + 0.1F, 0.0F);
-            matrixStackIn.mulPose(Axis.ZP.rotationDegrees(180.0F));
-        }
-    }
-
-    private static float getFacingAngle(Direction facingIn) {
-        switch(facingIn) {
-            case SOUTH:
-                return 90.0F;
-            case WEST:
-                return 0.0F;
-            case NORTH:
-                return 270.0F;
-            case EAST:
-                return 180.0F;
-            default:
-                return 0.0F;
+            geoModel.setVisible(true);
+            geoModel.bipedHeadwear().setHidden(!player.isModelPartShown(PlayerModelPart.HAT));
+            geoModel.bipedBodywear().setHidden(!player.isModelPartShown(PlayerModelPart.JACKET));
+            geoModel.bipedLeftLegwear().setHidden(!player.isModelPartShown(PlayerModelPart.LEFT_PANTS_LEG));
+            geoModel.bipedRightLegwear().setHidden(!player.isModelPartShown(PlayerModelPart.RIGHT_PANTS_LEG));
+            geoModel.bipedLeftArmwear().setHidden(!player.isModelPartShown(PlayerModelPart.LEFT_SLEEVE));
+            geoModel.bipedRightArmwear().setHidden(!player.isModelPartShown(PlayerModelPart.RIGHT_SLEEVE));
         }
     }
 
     @Override
-    public GeoModel<GeckoPlayer> getGeoModel() {
-        return this.geoModel;
+    public void preRenderPass(RenderPassInfo<GeoRenderState> renderPassInfo, SubmitNodeCollector renderTasks) {
+        registerAttachmentListener(renderPassInfo, "LeftHeldItem", leftHeldItemPose);
+        registerAttachmentListener(renderPassInfo, "RightHeldItem", rightHeldItemPose);
+        registerAttachmentListener(renderPassInfo, "ParticleEmitterRoot", particleEmitterRootPose);
+
+        AbstractClientPlayer player = renderPassInfo.getGeckolibData(LIVE_PLAYER);
+        if (player != null) {
+            itemInHandLayer.registerListeners(renderPassInfo, renderTasks, player);
+            solarFlareLayer.registerListener(renderPassInfo, renderTasks, player);
+        }
     }
 
-    @Override
-    public GeckoPlayer getAnimatable() {
-        return animatable;
+    private void registerAttachmentListener(RenderPassInfo<GeoRenderState> renderPassInfo, String boneName, Matrix4f target) {
+        renderPassInfo.addBonePositionListener(boneName, (worldPos, modelPos, localPos) ->
+                target.set(renderPassInfo.poseStack().last().pose()));
     }
 
-    public ModelGeckoPlayerThirdPerson getAnimatedPlayerModel() {
-        return this.geoModel;
-    }
+    /**
+     * Renders this player's third-person body via GeckoLib in place of vanilla's own body rendering for this frame.
+     * See class javadoc for the intended (cross-scope) call site.
+     *
+     * @param player       the live player entity being rendered
+     * @param geckoPlayer  this player's {@link GeckoPlayer} wrapper (holds the animatable instance cache/controller)
+     * @param poseStack    already translated to this entity's interpolated world-relative render position
+     * @param renderTasks  the frame's {@link SubmitNodeCollector}
+     * @param cameraState  the frame's {@link CameraRenderState}
+     * @param packedLight  packed light coordinates for this entity
+     * @param partialTick  render partial tick
+     */
+    public void render(AbstractClientPlayer player, GeckoPlayer geckoPlayer, PoseStack poseStack, SubmitNodeCollector renderTasks, CameraRenderState cameraState, int packedLight, float partialTick) {
+        if (!geoModel.isInitialized()) return;
 
-    @Override
-    public ResourceLocation getTextureLocation(GeckoPlayer geckoPlayer) {
-        return getTextureLocation((AbstractClientPlayer) geckoPlayer.getPlayer());
-    }
+        geoModel.setTextureFromPlayer(player);
 
-    @Override
-    public void renderRecursively(PoseStack poseStack, GeckoPlayer animatable, GeoBone bone, RenderType renderType, MultiBufferSource bufferSource, VertexConsumer buffer, boolean isReRender, float partialTick, int packedLight, int packedOverlay, int color) {
         poseStack.pushPose();
-        RenderUtil.translateMatrixToBone(poseStack, bone);
-        RenderUtil.translateToPivotPoint(poseStack, bone);
-        RenderUtil.rotateMatrixAroundBone(poseStack, bone);
-        RenderUtil.scaleMatrixForBone(poseStack, bone);
-        // Record xform matrices for relevant bones
-        if (bone instanceof MowzieGeoBone) {
-            MowzieGeoBone mowzieBone = (MowzieGeoBone)bone;
-            if (
-                    mowzieBone.getName().equals("LeftHeldItem") || mowzieBone.getName().equals("RightHeldItem") ||
-                    mowzieBone.getName().equals("Head") ||
-                    mowzieBone.getName().equals("Body") ||
-                    mowzieBone.getName().equals("BodyLayer") ||
-                    mowzieBone.getName().equals("LeftArm") ||
-                    mowzieBone.getName().equals("RightArm") ||
-                    mowzieBone.getName().equals("RightLeg") ||
-                    mowzieBone.getName().equals("LeftLeg") ||
-                    mowzieBone.getName().equals("ParticleEmitterRoot")
-            ) {
-                poseStack.pushPose();
-                if (!mowzieBone.getName().equals("LeftHeldItem") && !mowzieBone.getName().equals("RightHeldItem")) {
-                    poseStack.scale(-1.0F, -1.0F, 1.0F);
-                }
-                if (mowzieBone.getName().equals("Body")) {
-                    poseStack.translate(0, -0.75, 0);
-                }
-                if (mowzieBone.getName().equals("LeftArm")) {
-                    poseStack.translate(-0.075, 0, 0);
-                }
-                if (mowzieBone.getName().equals("RightArm")) {
-                    poseStack.translate(0.075, 0, 0);
-                }
-                PoseStack.Pose entry = poseStack.last();
-                mowzieBone.setWorldSpaceNormal(new Matrix3f(entry.normal()));
-                mowzieBone.setWorldSpaceMatrix(new Matrix4f(entry.pose()));
-                poseStack.popPose();
-            }
-        }
-        RenderUtil.translateAwayFromPivotPoint(poseStack, bone);
-        renderCubesOfBone(poseStack, bone, buffer, packedLight, packedOverlay, color);
-
-        if (!isReRender)
-            applyRenderLayersForBone(poseStack, animatable, bone, renderType, bufferSource, buffer, partialTick, packedLight, packedOverlay);
-
-        renderChildBones(poseStack, animatable, bone, renderType, bufferSource, buffer, isReRender, partialTick, packedLight, packedOverlay, color);
+        applyBodyPose(player, poseStack, partialTick);
+        performRenderPass(geckoPlayer, null, poseStack, renderTasks, cameraState, packedLight, partialTick);
         poseStack.popPose();
 
-        for(RenderLayer<AbstractClientPlayer, PlayerModel<AbstractClientPlayer>> layerrenderer : this.layers) {
-            if (layerrenderer instanceof IGeckoRenderLayer) ((IGeckoRenderLayer)layerrenderer).renderRecursively(bone, poseStack, buffer, packedLight, packedOverlay, color);
-        }
+        updateAttachmentPoints();
     }
 
     /**
-     * Update the current frame of a {@link AnimatableTexture potentially animated} texture used by this GeoRenderer.<br>
-     * This should only be called immediately prior to rendering, and only
-     * @see AnimatableTexture#setAndUpdate
+     * Simplified port of {@code AvatarRenderer#scale}/{@code #setupRotations}: fixed vanilla player scale + body-yaw
+     * facing. KNOWN SIMPLIFICATION: the pre-port {@code GeckoRenderPlayer#setupRotations}/
+     * {@code applyRotationsLivingRenderer} additionally special-cased elytra fall-flying, swimming, sleeping and
+     * death-flop rotations - not reproduced here. Abilities are not expected to trigger during those states; if a
+     * third-person ability animation ever looks wrong while the player is also flying/swimming/sleeping/dying,
+     * start here.
      */
-    @Override
-    public void updateAnimatedTextureFrame(GeckoPlayer animatable) {
-        AnimatableTexture.setAndUpdate(getTextureLocation(animatable));
+    private void applyBodyPose(AbstractClientPlayer player, PoseStack poseStack, float partialTick) {
+        poseStack.scale(0.9375F, 0.9375F, 0.9375F);
+        float bodyRot = Mth.rotLerp(partialTick, player.yBodyRotO, player.yBodyRot);
+        poseStack.mulPose(Axis.YP.rotationDegrees(180.0F - bodyRot));
     }
 
-    /**
-     * Create and fire the relevant {@code CompileLayers} event hook for this renderer
-     */
-    @Override
-    public void fireCompileRenderLayersEvent() {
+    private void updateAttachmentPoints() {
+        Vec3 left = transformOrigin(leftHeldItemPose);
+        Vec3 right = transformOrigin(rightHeldItemPose);
+        betweenHandsPos = right.add(left.subtract(right).scale(0.5));
+        particleEmitterRoot = transformOrigin(particleEmitterRootPose);
     }
 
-    /**
-     * Create and fire the relevant {@code Pre-Render} event hook for this renderer.<br>
-     * @return Whether the renderer should proceed based on the cancellation state of the event
-     */
-    @Override
-    public boolean firePreRenderEvent(PoseStack poseStack, BakedGeoModel model, MultiBufferSource bufferSource, float partialTick, int packedLight) {
-        return true;
-    }
-
-    /**
-     * Create and fire the relevant {@code Post-Render} event hook for this renderer
-     */
-    @Override
-    public void firePostRenderEvent(PoseStack poseStack, BakedGeoModel model, MultiBufferSource bufferSource, float partialTick, int packedLight) {
+    private static Vec3 transformOrigin(Matrix4f pose) {
+        Vector4f origin = new Vector4f(0.0F, 0.0F, 0.0F, 1.0F).mul(pose);
+        return new Vec3(origin.x(), origin.y(), origin.z());
     }
 }

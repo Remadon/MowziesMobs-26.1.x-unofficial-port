@@ -27,7 +27,7 @@ import net.minecraft.world.entity.EquipmentSlot;
 import net.minecraft.world.entity.LivingEntity;
 import net.minecraft.world.entity.ai.attributes.AttributeInstance;
 import net.minecraft.world.entity.ai.attributes.Attributes;
-import net.minecraft.world.entity.animal.Parrot;
+import net.minecraft.world.entity.animal.parrot.Parrot;
 import net.minecraft.world.entity.item.FallingBlockEntity;
 import net.minecraft.world.entity.item.ItemEntity;
 import net.minecraft.world.entity.player.Player;
@@ -37,6 +37,8 @@ import net.minecraft.world.item.ItemStack;
 import net.minecraft.world.item.enchantment.EnchantmentHelper;
 import net.minecraft.world.level.Level;
 import net.minecraft.world.level.block.state.BlockState;
+import net.minecraft.world.level.storage.ValueInput;
+import net.minecraft.world.level.storage.ValueOutput;
 import net.minecraft.world.phys.AABB;
 import net.minecraft.world.phys.Vec3;
 import net.neoforged.neoforge.common.CommonHooks;
@@ -81,10 +83,10 @@ public class EntityAxeAttack extends EntityMagicEffect {
         super.tick();
         if (getCaster() != null) {
             if (!getCaster().isAlive()) discard();
-            absMoveTo(getCaster().getX(), getCaster().getY() + getCaster().getEyeHeight(), getCaster().getZ(), getCaster().getYRot(), getCaster().getXRot());
+            snapTo(getCaster().getX(), getCaster().getY() + getCaster().getEyeHeight(), getCaster().getZ(), getCaster().getYRot(), getCaster().getXRot());
         }
-        if (!level().isClientSide && tickCount == 7) playSound(MMSounds.ENTITY_WROUGHT_WHOOSH.get(), 0.7F, 1.1f);
-        if (!level().isClientSide && getCaster() != null) {
+        if (!level().isClientSide() && tickCount == 7) playSound(MMSounds.ENTITY_WROUGHT_WHOOSH.get(), 0.7F, 1.1f);
+        if (!level().isClientSide() && getCaster() != null) {
             if (!getVertical() && tickCount == SWING_DURATION_HOR /2 - 1) dealDamage(7.0f * ConfigHandler.COMMON.TOOLS_AND_ABILITIES.AXE_OF_A_THOUSAND_METALS.toolConfig.attackDamage.get().floatValue() / 9.0f, 4f, 160, 1.2f);
             else if (getVertical() && tickCount == SWING_DURATION_VER /2 - 1) {
                 dealDamage(ConfigHandler.COMMON.TOOLS_AND_ABILITIES.AXE_OF_A_THOUSAND_METALS.toolConfig.attackDamage.get().floatValue(), 4.5f, 40, 0.8f);
@@ -128,9 +130,9 @@ public class EntityAxeAttack extends EntityMagicEffect {
                             if (!raytraceCheckEntity(entity)) continue;
 
                             if (getCaster() instanceof Player)
-                                hitEntity = entity.hurt(damageSources().playerAttack((Player) getCaster()), (factor * 5 + 1) * (ConfigHandler.COMMON.TOOLS_AND_ABILITIES.AXE_OF_A_THOUSAND_METALS.toolConfig.attackDamage.get().floatValue() / 9.0f));
+                                hitEntity = entity.hurtOrSimulate(damageSources().playerAttack((Player) getCaster()), (factor * 5 + 1) * (ConfigHandler.COMMON.TOOLS_AND_ABILITIES.AXE_OF_A_THOUSAND_METALS.toolConfig.attackDamage.get().floatValue() / 9.0f));
                             else
-                                hitEntity = entity.hurt(damageSources().mobAttack(getCaster()), (factor * 5 + 1) * (ConfigHandler.COMMON.TOOLS_AND_ABILITIES.AXE_OF_A_THOUSAND_METALS.toolConfig.attackDamage.get().floatValue() / 9.0f));
+                                hitEntity = entity.hurtOrSimulate(damageSources().mobAttack(getCaster()), (factor * 5 + 1) * (ConfigHandler.COMMON.TOOLS_AND_ABILITIES.AXE_OF_A_THOUSAND_METALS.toolConfig.attackDamage.get().floatValue() / 9.0f));
                             if (entity instanceof LivingEntity) {
                                 applyKnockbackResistance = (float) ((LivingEntity) entity).getAttribute(Attributes.KNOCKBACK_RESISTANCE).getValue();
                             }
@@ -149,7 +151,7 @@ public class EntityAxeAttack extends EntityMagicEffect {
                             }
                         }
                     }
-                    if (level().random.nextBoolean()) {
+                    if (level().getRandom().nextBoolean()) {
                         int hitX = Mth.floor(px);
                         int hitZ = Mth.floor(pz);
                         BlockPos pos = new BlockPos(hitX, hitY, hitZ);
@@ -244,7 +246,7 @@ public class EntityAxeAttack extends EntityMagicEffect {
             return;
         }
 
-        if (targetEntity.getType().is(EntityTypeTags.REDIRECTABLE_PROJECTILE) && targetEntity instanceof Projectile projectile && projectile.deflect(ProjectileDeflection.AIM_DEFLECT, this, this, true)) {
+        if (targetEntity.is(EntityTypeTags.REDIRECTABLE_PROJECTILE) && targetEntity instanceof Projectile projectile && projectile.deflect(ProjectileDeflection.AIM_DEFLECT, this, net.minecraft.world.entity.EntityReference.of(this), true)) {
             this.level().playSound(null, this.getX(), this.getY(), this.getZ(), SoundEvents.PLAYER_ATTACK_NODAMAGE, this.getSoundSource());
             resetModifiers(player, newStack, oldStack);
             player.setItemInHand(InteractionHand.MAIN_HAND, oldStack);
@@ -269,7 +271,7 @@ public class EntityAxeAttack extends EntityMagicEffect {
             float targetHealth = targetEntity instanceof LivingEntity livingTarget ? livingTarget.getHealth() : 0;
 
             Vec3 targetMovement = targetEntity.getDeltaMovement();
-            boolean wasHurt = targetEntity.hurt(damageSource, damage);
+            boolean wasHurt = targetEntity.hurtOrSimulate(damageSource, damage);
 
             if (wasHurt) {
                 float knockback = player.getKnockback(targetEntity, damageSource) + (wasSprinting ? 1 : 0);
@@ -365,16 +367,18 @@ public class EntityAxeAttack extends EntityMagicEffect {
     }
 
     @Override
-    protected void readAdditionalSaveData(CompoundTag compound) {
-        super.readAdditionalSaveData(compound);
-        setAxeStack(ItemStack.parseOptional(registryAccess(), compound.getCompound("axe_stack")));
-        setVertical(compound.getBoolean("vertical"));
+    protected void readAdditionalSaveData(ValueInput input) {
+        super.readAdditionalSaveData(input);
+        setAxeStack(input.read("axe_stack", ItemStack.CODEC).orElse(ItemStack.EMPTY));
+        setVertical(input.getBooleanOr("vertical", false));
     }
 
     @Override
-    protected void addAdditionalSaveData(CompoundTag compound) {
-        super.addAdditionalSaveData(compound);
-        compound.put("axe_stack", getAxeStack().save(registryAccess(), new CompoundTag()));
-        compound.putBoolean("vertical", getVertical());
+    protected void addAdditionalSaveData(ValueOutput output) {
+        super.addAdditionalSaveData(output);
+        if (!getAxeStack().isEmpty()) {
+            output.store("axe_stack", ItemStack.CODEC, getAxeStack());
+        }
+        output.putBoolean("vertical", getVertical());
     }
 }

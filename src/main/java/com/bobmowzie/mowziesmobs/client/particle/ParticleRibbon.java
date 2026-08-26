@@ -12,15 +12,30 @@ import net.minecraft.client.Camera;
 import net.minecraft.client.multiplayer.ClientLevel;
 import net.minecraft.client.particle.Particle;
 import net.minecraft.client.particle.ParticleProvider;
+import net.minecraft.client.particle.ParticleRenderType;
 import net.minecraft.client.particle.SpriteSet;
 import net.minecraft.core.Holder;
 import net.minecraft.core.particles.ParticleType;
+import net.minecraft.util.RandomSource;
 import net.minecraft.world.level.Level;
 import net.minecraft.world.phys.AABB;
 import net.minecraft.world.phys.Vec3;
 import org.joml.Matrix4f;
 import org.joml.Vector4f;
 
+// ARCHITECTURAL LIMITATION (see final report): each ribbon "segment" is a quadrilateral whose two edges are
+// independently sized (offsetDir at the trailing vs. leading control point of the segment can have different
+// lengths/directions), i.e. an arbitrary quad, not a rotated *square*. The new particle rendering pipeline
+// (QuadParticleRenderState#add(), reached via SingleQuadParticle#extract()) only accepts "world position +
+// rotation quaternion + one uniform scale" per call, which can only describe a rotated square - it cannot
+// represent this geometry. Reproducing this particle requires a custom net.minecraft.client.particle.ParticleGroup
+// (registered via NeoForge's RegisterParticleGroupsEvent) with its own render-state/renderer that writes
+// arbitrary quads into a VertexConsumer, the way this class's render() method used to. That is out of scope
+// for this file (it needs new infrastructure, likely alongside MMRenderType under client/render, which is out
+// of scope for this pass) so getGroup() below returns NO_RENDER: the particle still ticks (so ribbon-following
+// components like RibbonComponent.Trail keep working), it just doesn't draw anything until that custom
+// renderer exists. The old render() logic is kept below (renamed off @Override, with the handful of renamed
+// Camera APIs updated) so it's ready to be reconnected once a custom render pipeline exists.
 public class ParticleRibbon extends AdvancedParticleBase {
     public Vec3[] positions;
     public Vec3[] prevPositions;
@@ -40,7 +55,9 @@ public class ParticleRibbon extends AdvancedParticleBase {
         super.updatePosition();
     }
 
-    @Override
+    // NB: not an @Override anymore - Particle#render(VertexConsumer, Camera, float) no longer exists. See the
+    // class-level comment above for why this can't currently be reconnected to the new extract()-based
+    // pipeline, and what would be needed to do so.
     public void render(VertexConsumer buffer, Camera renderInfo, float partialTicks) {
         alpha = prevAlpha + (alpha - prevAlpha) * partialTicks;
         if (alpha < 0.01) alpha = 0.01f;
@@ -53,7 +70,7 @@ public class ParticleRibbon extends AdvancedParticleBase {
             component.preRender(this, partialTicks);
         }
 
-        int j = this.getLightColor(partialTicks);
+        int j = this.getLightCoords(partialTicks);
 
         float r =  rCol;
         float g = gCol;
@@ -121,14 +138,14 @@ public class ParticleRibbon extends AdvancedParticleBase {
                 }
             }
 
-            Vec3 Vector3d = renderInfo.getPosition();
+            Vec3 Vector3d = renderInfo.position();
             Vec3 p1 = prevPositions[index].add(positions[index].subtract(prevPositions[index]).scale(partialTicks)).subtract(Vector3d);
             Vec3 p2 = prevPositions[index + 1].add(positions[index + 1].subtract(prevPositions[index + 1]).scale(partialTicks)).subtract(Vector3d);
 
             if (index == 0) {
                 Vec3 moveDir = p2.subtract(p1).normalize();
                 if (rotation instanceof ParticleRotation.FaceCamera) {
-                    Vec3 viewVec = new Vec3(renderInfo.getLookVector());
+                    Vec3 viewVec = new Vec3(renderInfo.forwardVector());
                     offsetDir = moveDir.cross(viewVec).normalize();
                 } else {
                     offsetDir = moveDir.cross(new Vec3(0, 1, 0)).normalize();
@@ -139,7 +156,7 @@ public class ParticleRibbon extends AdvancedParticleBase {
             Vec3[] aVector3d2 = new Vec3[] {offsetDir.scale(-1), offsetDir, null, null};
             Vec3 moveDir = p2.subtract(p1).normalize();
             if (rotation instanceof ParticleRotation.FaceCamera) {
-                Vec3 viewVec = new Vec3(renderInfo.getLookVector());
+                Vec3 viewVec = new Vec3(renderInfo.forwardVector());
                 offsetDir = moveDir.cross(viewVec).normalize();
             }
             else {
@@ -221,6 +238,13 @@ public class ParticleRibbon extends AdvancedParticleBase {
         return getV1();
     }
 
+    // See class-level comment: ribbon geometry can't be represented by the new single-quad extraction API, so
+    // this intentionally opts out of drawing (NO_RENDER) rather than silently drawing one incorrect quad.
+    @Override
+    public ParticleRenderType getGroup() {
+        return ParticleRenderType.NO_RENDER;
+    }
+
     public static final class Provider implements ParticleProvider<RibbonParticleType> {
         private final SpriteSet spriteSet;
 
@@ -229,7 +253,7 @@ public class ParticleRibbon extends AdvancedParticleBase {
         }
 
         @Override
-        public Particle createParticle(RibbonParticleType typeIn, ClientLevel worldIn, double x, double y, double z, double xSpeed, double ySpeed, double zSpeed) {
+        public Particle createParticle(RibbonParticleType typeIn, ClientLevel worldIn, double x, double y, double z, double xSpeed, double ySpeed, double zSpeed, RandomSource random) {
             ParticleRibbon particle = new ParticleRibbon(worldIn, x, y, z, xSpeed, ySpeed, zSpeed, typeIn.rotation(), typeIn.scale(), typeIn.red(), typeIn.green(), typeIn.blue(), typeIn.alpha(), typeIn.airDrag(), typeIn.duration(), typeIn.emissive(), typeIn.length(), typeIn.components());
             particle.setSpriteFromAge(spriteSet);
             return particle;

@@ -6,29 +6,30 @@ import com.bobmowzie.mowziesmobs.client.model.tools.geckolib.MowzieGeoModel;
 import com.bobmowzie.mowziesmobs.client.render.entity.player.GeckoPlayer;
 import net.minecraft.client.model.HumanoidModel;
 import net.minecraft.client.player.AbstractClientPlayer;
-import net.minecraft.resources.ResourceLocation;
-import software.bernie.geckolib.animation.AnimationState;
+import net.minecraft.resources.Identifier;
+import com.geckolib.animation.state.AnimationTest;
+import com.geckolib.renderer.base.GeoRenderState;
 
 public class ModelGeckoPlayerFirstPerson extends MowzieGeoModel<GeckoPlayer> {
-	private ResourceLocation textureLocation;
+	private Identifier textureLocation;
 
 	public HumanoidModel.ArmPose leftArmPose = HumanoidModel.ArmPose.EMPTY;
 	public HumanoidModel.ArmPose rightArmPose = HumanoidModel.ArmPose.EMPTY;
 
 	protected boolean useSmallArms;
-	
+
 	@Override
-	public ResourceLocation getAnimationResource(GeckoPlayer animatable) {
-		return ResourceLocation.fromNamespaceAndPath(MMCommon.MODID, "animations/animated_player_first_person.animation.json");
+	public Identifier getAnimationResource(GeckoPlayer animatable) {
+		return Identifier.fromNamespaceAndPath(MMCommon.MODID, "animated_player_first_person");
 	}
 
 	@Override
-	public ResourceLocation getModelResource(GeckoPlayer animatable) {
-		return ResourceLocation.fromNamespaceAndPath(MMCommon.MODID, "geo/animated_player_first_person.geo.json");
+	public Identifier getModelResource(GeoRenderState renderState) {
+		return Identifier.fromNamespaceAndPath(MMCommon.MODID, "animated_player_first_person");
 	}
 
 	@Override
-	public ResourceLocation getTextureResource(GeckoPlayer animatable) {
+	public Identifier getTextureResource(GeoRenderState renderState) {
 		return textureLocation;
 	}
 
@@ -40,9 +41,8 @@ public class ModelGeckoPlayerFirstPerson extends MowzieGeoModel<GeckoPlayer> {
 		return useSmallArms;
 	}
 
-	@Override
-	public void setCustomAnimations(GeckoPlayer animatable, long instanceId, AnimationState<GeckoPlayer> animationState) {
-		super.setCustomAnimations(animatable, instanceId, animationState);
+	// PORTING NOTE: no longer @Override - see MowzieGeoModel's class javadoc.
+	public void setCustomAnimations(GeckoPlayer animatable, long instanceId, AnimationTest<GeckoPlayer> animationState) {
 		if (isInitialized()) {
 			MowzieGeoBone rightArmLayerClassic = getMowzieBone("RightArmLayerClassic");
 			MowzieGeoBone leftArmLayerClassic = getMowzieBone("LeftArmLayerClassic");
@@ -66,6 +66,6 @@ public class ModelGeckoPlayerFirstPerson extends MowzieGeoModel<GeckoPlayer> {
 	}
 
 	public void setTextureFromPlayer(AbstractClientPlayer player) {
-		this.textureLocation = player.getSkin().texture();
+		this.textureLocation = player.getSkin().body().texturePath();
 	}
 }

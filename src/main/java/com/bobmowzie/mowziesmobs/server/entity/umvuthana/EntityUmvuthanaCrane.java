@@ -7,6 +7,7 @@ import com.bobmowzie.mowziesmobs.server.ai.UmvuthanaHurtByTargetAI;
 import com.bobmowzie.mowziesmobs.server.item.UmvuthanaMask;
 import com.bobmowzie.mowziesmobs.server.potion.EffectHandler;
 import net.minecraft.core.BlockPos;
+import net.minecraft.server.level.ServerLevel;
 import net.minecraft.util.Mth;
 import net.minecraft.world.Difficulty;
 import net.minecraft.world.DifficultyInstance;
@@ -17,8 +18,8 @@ import net.minecraft.world.entity.ai.attributes.Attributes;
 import net.minecraft.world.entity.ai.goal.AvoidEntityGoal;
 import net.minecraft.world.entity.ai.goal.Goal;
 import net.minecraft.world.entity.ai.targeting.TargetingConditions;
-import net.minecraft.world.entity.monster.AbstractSkeleton;
-import net.minecraft.world.entity.monster.Zombie;
+import net.minecraft.world.entity.monster.skeleton.AbstractSkeleton;
+import net.minecraft.world.entity.monster.zombie.Zombie;
 import net.minecraft.world.entity.player.Player;
 import net.minecraft.world.entity.projectile.Projectile;
 import net.minecraft.world.item.ItemStack;
@@ -55,7 +56,7 @@ public class EntityUmvuthanaCrane extends EntityUmvuthanaMinion {
                 if (getTarget() == target) return true;
                 if (getTarget() instanceof EntityUmvuthi) return false;
                 if (getActiveAbilityType() != null) return false;
-                ItemStack headArmorStack = ((Player) target).getInventory().armor.get(3);
+                ItemStack headArmorStack = ((Player) target).getItemBySlot(EquipmentSlot.HEAD);
                 return !(headArmorStack.getItem() instanceof UmvuthanaMask) || target == getMisbehavedPlayer();
             }
             return true;
@@ -73,7 +74,7 @@ public class EntityUmvuthanaCrane extends EntityUmvuthanaMinion {
     @Override
     protected void registerTargetGoals() {
         this.targetSelector.addGoal(3, new UmvuthanaHurtByTargetAI(this, true));
-        this.targetSelector.addGoal(2, new NearestAttackableTargetPredicateGoal<EntityUmvuthi>(this, EntityUmvuthi.class, 0, false, false, TargetingConditions.forNonCombat().range(getAttributeValue(Attributes.FOLLOW_RANGE) * 2).selector(target -> {
+        this.targetSelector.addGoal(2, new NearestAttackableTargetPredicateGoal<EntityUmvuthi>(this, EntityUmvuthi.class, 0, false, false, TargetingConditions.forNonCombat().range(getAttributeValue(Attributes.FOLLOW_RANGE) * 2).selector((target, targetLevel) -> {
             if (!active) return false;
             if (target instanceof Mob) {
                 return ((Mob) target).getTarget() != null || target.getHealth() < target.getMaxHealth();
@@ -163,10 +164,10 @@ public class EntityUmvuthanaCrane extends EntityUmvuthanaMinion {
             int i;
             int j;
             int k;
-            if (entity.getRestrictRadius() > -1) {
-                i = Mth.floor(entity.getRestrictCenter().getX());
-                j = Mth.floor(entity.getRestrictCenter().getY());
-                k = Mth.floor(entity.getRestrictCenter().getZ());
+            if (entity.getHomeRadius() > -1) {
+                i = Mth.floor(entity.getHomePosition().getX());
+                j = Mth.floor(entity.getHomePosition().getY());
+                k = Mth.floor(entity.getHomePosition().getZ());
             }
             else if (entity.getTarget() != null) {
                 i = Mth.floor(entity.getTarget().getX());
@@ -264,9 +265,9 @@ public class EntityUmvuthanaCrane extends EntityUmvuthanaMinion {
     }
     
     @Override
-    public boolean isInvulnerableTo(DamageSource source) {
+    public boolean isInvulnerableTo(ServerLevel level, DamageSource source) {
         boolean teleporting = getActiveAbilityType() == TELEPORT_ABILITY && getActiveAbility().getTicksInUse() <= 16;
-        return super.isInvulnerableTo(source) || ((!active || teleporting || !hasTriedOrSucceededTeleport) && !source.is(DamageTypes.FELL_OUT_OF_WORLD) && timeUntilDeath != 0);
+        return super.isInvulnerableTo(level, source) || ((!active || teleporting || !hasTriedOrSucceededTeleport) && !source.is(DamageTypes.FELL_OUT_OF_WORLD) && timeUntilDeath != 0);
     }
 
     @Override
@@ -277,7 +278,7 @@ public class EntityUmvuthanaCrane extends EntityUmvuthanaMinion {
     }
 
     @Override
-    public SpawnGroupData finalizeSpawn(ServerLevelAccessor world, DifficultyInstance difficulty, MobSpawnType reason, SpawnGroupData livingData) {
+    public SpawnGroupData finalizeSpawn(ServerLevelAccessor world, DifficultyInstance difficulty, EntitySpawnReason reason, SpawnGroupData livingData) {
         setMask(MaskType.FAITH);
         setWeapon(3);
         return super.finalizeSpawn(world, difficulty, reason, livingData);

@@ -3,7 +3,7 @@ package com.bobmowzie.mowziesmobs.server.world;
 import com.bobmowzie.mowziesmobs.server.config.ConfigHandler;
 import net.minecraft.core.Holder;
 import net.minecraft.core.registries.Registries;
-import net.minecraft.resources.ResourceLocation;
+import net.minecraft.resources.Identifier;
 import net.minecraft.tags.TagKey;
 import net.minecraft.world.level.biome.Biome;
 
@@ -12,8 +12,8 @@ import java.util.Set;
 
 public class BiomeChecker {
     private Set<BiomeCombo> comboList;
-    private Set<ResourceLocation> whitelist;
-    private Set<ResourceLocation> blacklist;
+    private Set<Identifier> whitelist;
+    private Set<Identifier> blacklist;
 
     public BiomeChecker(ConfigHandler.BiomeConfig biomeConfig) {
         comboList = new HashSet<>();
@@ -23,21 +23,21 @@ public class BiomeChecker {
         }
         whitelist = new HashSet<>();
         for (String biomeString : biomeConfig.biomeWhitelist.get()) {
-            whitelist.add(ResourceLocation.tryParse(biomeString));
+            whitelist.add(Identifier.tryParse(biomeString));
         }
         blacklist = new HashSet<>();
         for (String biomeString : biomeConfig.biomeBlacklist.get()) {
-            blacklist.add(ResourceLocation.tryParse(biomeString));
+            blacklist.add(Identifier.tryParse(biomeString));
         }
     }
     
     public boolean isBiomeInConfig(Holder<Biome> biome) {
-        for (ResourceLocation biomeName : whitelist) {
+        for (Identifier biomeName : whitelist) {
             TagKey<Biome> tagKey = TagKey.create(Registries.BIOME, biomeName);
             if (biome.is(tagKey)) return true;
             if (biome.is(biomeName)) return true;
         }
-        for (ResourceLocation biomeName : blacklist) {
+        for (Identifier biomeName : blacklist) {
             TagKey<Biome> tagKey = TagKey.create(Registries.BIOME, biomeName);
             if (biome.is(tagKey)) return false;
             if (biome.is(biomeName)) return false;
@@ -50,11 +50,11 @@ public class BiomeChecker {
     }
 
     private static class BiomeCombo {
-        ResourceLocation[] neededTags;
+        Identifier[] neededTags;
         boolean[] inverted;
         private BiomeCombo(String biomeComboString) {
             String[] typeStrings = biomeComboString.replace(" ", "").split(",");
-            neededTags = new ResourceLocation[typeStrings.length];
+            neededTags = new Identifier[typeStrings.length];
             inverted = new boolean[typeStrings.length];
             for (int i = 0; i < typeStrings.length; i++) {
                 if (typeStrings[i].length() == 0) {
@@ -62,13 +62,13 @@ public class BiomeChecker {
                 }
                 inverted[i] = typeStrings[i].charAt(0) == '!';
                 String name = typeStrings[i].replace("!", "");
-                neededTags[i] = ResourceLocation.tryParse(name);
+                neededTags[i] = Identifier.tryParse(name);
             }
         }
 
         private boolean acceptsBiome(Holder<Biome> biome) {
             for (int i = 0; i < neededTags.length; i++) {
-                ResourceLocation neededBiomeName = neededTags[i];
+                Identifier neededBiomeName = neededTags[i];
                 if (neededBiomeName == null) continue;
                 TagKey<Biome> neededBiomeTag = TagKey.create(Registries.BIOME, neededBiomeName);
                 boolean failIfMatches = inverted[i];

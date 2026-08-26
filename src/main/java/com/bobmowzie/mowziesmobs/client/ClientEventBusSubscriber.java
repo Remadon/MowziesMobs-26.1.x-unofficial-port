@@ -7,7 +7,6 @@ import com.bobmowzie.mowziesmobs.client.render.block.GongRenderer;
 import com.bobmowzie.mowziesmobs.client.render.entity.*;
 import com.bobmowzie.mowziesmobs.server.block.entity.BlockEntityHandler;
 import com.bobmowzie.mowziesmobs.server.entity.EntityHandler;
-import com.bobmowzie.mowziesmobs.server.entity.umvuthana.MaskType;
 import com.bobmowzie.mowziesmobs.server.inventory.ContainerHandler;
 import net.minecraft.client.renderer.blockentity.BlockEntityRenderers;
 import net.minecraft.client.renderer.entity.EntityRenderers;
@@ -15,10 +14,9 @@ import net.neoforged.api.distmarker.Dist;
 import net.neoforged.bus.api.SubscribeEvent;
 import net.neoforged.fml.common.EventBusSubscriber;
 import net.neoforged.fml.event.lifecycle.FMLClientSetupEvent;
-import net.neoforged.neoforge.client.event.ModelEvent;
 import net.neoforged.neoforge.client.event.RegisterMenuScreensEvent;
 
-@EventBusSubscriber(bus = EventBusSubscriber.Bus.MOD, value = Dist.CLIENT)
+@EventBusSubscriber(value = Dist.CLIENT)
 public class ClientEventBusSubscriber {
 
     @SubscribeEvent
@@ -78,16 +76,25 @@ public class ClientEventBusSubscriber {
         event.register(ContainerHandler.CONTAINER_SCULPTOR_TRADE.get(), GuiSculptorTrade::new);
     }
 
-    @SubscribeEvent
-    public static void onRegisterModels(ModelEvent.RegisterAdditional modelRegistryEvent) {
-        for (String item : MMModels.HAND_MODEL_ITEMS) {
-        	modelRegistryEvent.register(MMModels.prefixed(item + "_in_hand"));
-        }
-
-        for (MaskType type : MaskType.values()) {
-        	modelRegistryEvent.register(MMModels.prefixed("umvuthana_mask_" + type.name + "_frame"));
-        }
-
-        modelRegistryEvent.register(MMModels.prefixed("sol_visage_frame"));
-    }
+    /* FIXME 1.21 -> 26.1.2 port: UNRESOLVED, flagged for follow-up (see client/MMModels.java's class javadoc for
+        the full explanation). This used to be:
+            @SubscribeEvent
+            public static void onRegisterModels(ModelEvent.RegisterAdditional modelRegistryEvent) {
+                for (String item : MMModels.HAND_MODEL_ITEMS) {
+                    modelRegistryEvent.register(MMModels.prefixed(item + "_in_hand"));
+                }
+                for (MaskType type : MaskType.values()) {
+                    modelRegistryEvent.register(MMModels.prefixed("umvuthana_mask_" + type.name + "_frame"));
+                }
+                modelRegistryEvent.register(MMModels.prefixed("sol_visage_frame"));
+            }
+        `ModelEvent.RegisterAdditional` no longer exists in NeoForge 26.1.2.95 (confirmed by reading the real
+        net/neoforged/neoforge/client/event/ModelEvent.java source - only ModifyBakingResult, BakingCompleted,
+        RegisterStandalone, and RegisterLoaders remain). The closest analog, RegisterStandalone, needs a
+        StandaloneModelKey<T> + UnbakedStandaloneModel<T> per model and a different retrieval path
+        (ModelManager#getStandaloneModel(key)) than the old "just ensure this model id gets baked so it's in the
+        baking-result map" pattern this method relied on. Left unregistered rather than guessing at the redesign;
+        see MMModels.java for the fuller writeup of why this whole feature needs a data-driven (item model JSON)
+        redesign rather than a mechanical port.
+    */
 }

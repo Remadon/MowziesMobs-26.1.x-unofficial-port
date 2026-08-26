@@ -1,154 +1,51 @@
 package com.bobmowzie.mowziesmobs.client.model.entity;
 
-import com.bobmowzie.mowziesmobs.client.model.tools.ModelPartMatrix;
-import com.google.common.collect.ImmutableList;
-import net.minecraft.client.model.HumanoidModel;
-import net.minecraft.client.model.PlayerModel;
 import net.minecraft.client.model.geom.ModelPart;
-import net.minecraft.util.RandomSource;
-import net.minecraft.world.entity.LivingEntity;
+import net.minecraft.client.model.player.PlayerModel;
+import net.minecraft.client.renderer.entity.state.AvatarRenderState;
 
-import java.util.ArrayList;
-import java.util.HashMap;
-import java.util.List;
-import java.util.Map;
-
-public class ModelPlayerAnimated<T extends LivingEntity> extends PlayerModel<T> {
-    private final List<ModelPart> parts;
+/**
+ * PORTING NOTE (1.21.1 -> 26.1.2): this class's ORIGINAL job was to swap vanilla {@code PlayerModel}'s layer parts
+ * ({@code jacket}/{@code leftSleeve}/{@code rightSleeve}/{@code leftPants}/{@code rightPants}) for
+ * {@code ModelPartMatrix} stand-ins whose world transform was slaved to a GeckoLib-animated pose each frame
+ * ({@code copyFromGeckoModel}), so that vanilla's own decorative render layers (armor, cape, elytra, etc, which all
+ * read pose data off a shared {@code PlayerModel} instance) would visually follow the GeckoLib third-person player
+ * animation used during abilities.
+ * <p>
+ * That mechanism is no longer possible AND no longer needed - see the architecture writeup in
+ * {@code client/render/entity/player/GeckoRenderPlayer.java} (this mod's actual redesign) and the "GeckoRenderPlayer
+ * / third-person ability rendering redesign" section of PORTING_NOTES.md for the full reasoning. Summary:
+ * <ul>
+ *   <li>NOT POSSIBLE: {@code PlayerModel}'s layer-part fields are now {@code public final ModelPart} (confirmed by
+ *       reading {@code net/minecraft/client/model/player/PlayerModel.java} in the real 26.1.2 source) - they can no
+ *       longer be reassigned to a custom {@code ModelPartMatrix} subclass. GeckoLib 5 also no longer exposes a
+ *       bone's world transform matrix outside of its own live render traversal in any form richer than a position
+ *       vector (confirmed by reading the real GeckoLib 5.5.2 source - {@code RenderPassInfo.BonePositionListener}
+ *       is position-only, and {@code GeoBone#frameSnapshot} is nulled again immediately after that traversal), so
+ *       there is no longer a reliable data source to slave a stand-in model to even if the fields were mutable.</li>
+ *   <li>NOT NEEDED: {@code GeckoRenderPlayer} no longer tries to make vanilla's {@code PlayerModel} imitate the
+ *       GeckoLib pose at all. Instead, during an active ability, it renders the dedicated third-person GeckoLib rig
+ *       ({@code ModelGeckoPlayerThirdPerson}, which already includes its own body/clothing-layer geometry, e.g. the
+ *       {@code BodyLayer} bone) directly in place of vanilla's body, via GeckoLib's own {@code GeoObjectRenderer}
+ *       pipeline. Vanilla's {@code AvatarRenderer}/{@code PlayerModel} plumbing is left completely untouched.</li>
+ * </ul>
+ * Consequently this class no longer needs any custom behaviour - it is kept as a plain, fully-functional
+ * {@code PlayerModel} subclass (not a stub) purely so the old call sites' TYPE still resolves if something else ever
+ * wants a distinctly-typed "animated" player model; nothing in this mod constructs one any more today (grepped the
+ * whole {@code src/main/java} tree to confirm - the only remaining reference was this file itself and the old,
+ * removed {@code GeckoRenderPlayer} constructor call). The {@code ModelPartMatrix}-based static helpers
+ * ({@code copyPropertiesTo}, {@code setUseMatrixMode}, {@code copyFromGeckoModel}) have been removed rather than
+ * stubbed, since nothing calls them any more and their whole premise (swappable layer-part references) no longer
+ * exists on {@code PlayerModel}.
+ */
+public class ModelPlayerAnimated extends PlayerModel {
 
     public ModelPlayerAnimated(ModelPart root, boolean smallArmsIn) {
         super(root, smallArmsIn);
-        ModelPartMatrix bodyMatrix = new ModelPartMatrix(body, false);
-        ModelPartMatrix headMatrix = new ModelPartMatrix(head, false);
-        ModelPartMatrix rightArmMatrix = new ModelPartMatrix(rightArm, false);
-        ModelPartMatrix leftArmMatrix = new ModelPartMatrix(leftArm, false);
-        ModelPartMatrix rightLegMatrix = new ModelPartMatrix(rightLeg, false);
-        ModelPartMatrix leftLegMatrix = new ModelPartMatrix(leftLeg, false);
-
-        ModelPartMatrix hatMatrix = new ModelPartMatrix(hat, false);
-        ModelPartMatrix jacketMatrix = new ModelPartMatrix(jacket, false);
-        ModelPartMatrix leftSleeveMatrix = new ModelPartMatrix(leftSleeve, false);
-        ModelPartMatrix rightSleeveMatrix = new ModelPartMatrix(rightSleeve, false);
-        ModelPartMatrix leftPantsMatrix = new ModelPartMatrix(leftPants, false);
-        ModelPartMatrix rightPantsMatrix = new ModelPartMatrix(rightPants, false);
-        ModelPartMatrix earMatrix = new ModelPartMatrix(ear, false);
-
-        Map<ModelPart, ModelPart> origToNew = new HashMap<>();
-        origToNew.put(body, bodyMatrix);
-        origToNew.put(head, headMatrix);
-        origToNew.put(rightArm, rightArmMatrix);
-        origToNew.put(leftArm, leftArmMatrix);
-        origToNew.put(rightLeg, rightLegMatrix);
-        origToNew.put(leftLeg, leftLegMatrix);
-
-        origToNew.put(hat, hatMatrix);
-        origToNew.put(jacket, jacketMatrix);
-        origToNew.put(leftSleeve, leftSleeveMatrix);
-        origToNew.put(rightSleeve, rightSleeveMatrix);
-        origToNew.put(leftPants, leftPantsMatrix);
-        origToNew.put(rightPants, rightPantsMatrix);
-        origToNew.put(ear, earMatrix);
-        
-        this.body = bodyMatrix;
-        this.head = headMatrix;
-        this.rightArm = rightArmMatrix;
-        this.leftArm = leftArmMatrix;
-        this.rightLeg = rightLegMatrix;
-        this.leftLeg = leftLegMatrix;
-
-        this.hat = hatMatrix;
-        this.jacket = jacketMatrix;
-        this.leftSleeve = leftSleeveMatrix;
-        this.rightSleeve = rightSleeveMatrix;
-        this.leftPants = leftPantsMatrix;
-        this.rightPants = rightPantsMatrix;
-        this.ear = earMatrix;
-        
-        List<ModelPart> originalList = root.getAllParts().filter((p_170824_) -> {
-            return !p_170824_.isEmpty();
-        }).collect(ImmutableList.toImmutableList());
-
-        this.parts = new ArrayList<>();
-        for (ModelPart origPart : originalList) {
-            ModelPart newPart = origToNew.get(origPart);
-            if (newPart != null) this.parts.add(newPart);
-        }
     }
 
     @Override
-    public void setupAnim(T entityIn, float limbSwing, float limbSwingAmount, float ageInTicks, float netHeadYaw, float headPitch) {
-        this.leftPants.copyFrom(this.leftLeg);
-        this.rightPants.copyFrom(this.rightLeg);
-        this.leftSleeve.copyFrom(this.leftArm);
-        this.rightSleeve.copyFrom(this.rightArm);
-        this.jacket.copyFrom(this.body);
-        this.hat.copyFrom(this.head);
-        this.ear.copyFrom(this.head);
-    }
-
-    @Override
-    public ModelPart getRandomModelPart(RandomSource randomIn) {
-        return this.parts.get(randomIn.nextInt(this.parts.size()));
-    }
-
-    @Override
-    public void copyPropertiesTo(HumanoidModel<T> modelIn) {
-        if (!(modelIn.body instanceof ModelPartMatrix)) {
-            modelIn.head = new ModelPartMatrix(modelIn.head);
-            modelIn.hat = new ModelPartMatrix(modelIn.hat);
-            modelIn.body = new ModelPartMatrix(modelIn.body);
-            modelIn.leftArm = new ModelPartMatrix(modelIn.leftArm);
-            modelIn.rightArm = new ModelPartMatrix(modelIn.rightArm);
-            modelIn.leftLeg = new ModelPartMatrix(modelIn.leftLeg);
-            modelIn.rightLeg = new ModelPartMatrix(modelIn.rightLeg);
-        }
-        ModelBipedAnimated.setUseMatrixMode(modelIn, true);
-        super.copyPropertiesTo(modelIn);
-    }
-
-    public static void setUseMatrixMode(PlayerModel<? extends LivingEntity> bipedModel, boolean useMatrixMode) {
-        if (bipedModel.hat instanceof ModelPartMatrix) {
-            ((ModelPartMatrix) bipedModel.jacket).setUseMatrixMode(useMatrixMode);
-            ((ModelPartMatrix) bipedModel.leftPants).setUseMatrixMode(useMatrixMode);
-            ((ModelPartMatrix) bipedModel.rightPants).setUseMatrixMode(useMatrixMode);
-            ((ModelPartMatrix) bipedModel.rightSleeve).setUseMatrixMode(useMatrixMode);
-            ((ModelPartMatrix) bipedModel.leftSleeve).setUseMatrixMode(useMatrixMode);
-            ((ModelPartMatrix) bipedModel.ear).setUseMatrixMode(useMatrixMode);
-        }
-        ModelBipedAnimated.setUseMatrixMode(bipedModel, useMatrixMode);
-    }
-
-    public static void copyFromGeckoModel(PlayerModel<?> playerModel, ModelGeckoPlayerThirdPerson geckoModel) {
-        ModelBipedAnimated.copyFromGeckoModel(playerModel, geckoModel);
-
-        if (playerModel.jacket instanceof ModelPartMatrix) {
-            ((ModelPartMatrix) playerModel.jacket).setWorldXform(geckoModel.bipedBody().getWorldSpaceMatrix());
-            ((ModelPartMatrix) playerModel.jacket).setWorldNormal(geckoModel.bipedBody().getWorldSpaceNormal());
-        }
-
-        if (playerModel.leftPants instanceof ModelPartMatrix) {
-            ((ModelPartMatrix) playerModel.leftPants).setWorldXform(geckoModel.bipedLeftLeg().getWorldSpaceMatrix());
-            ((ModelPartMatrix) playerModel.leftPants).setWorldNormal(geckoModel.bipedLeftLeg().getWorldSpaceNormal());
-        }
-
-        if (playerModel.rightPants instanceof ModelPartMatrix) {
-            ((ModelPartMatrix) playerModel.rightPants).setWorldXform(geckoModel.bipedRightLeg().getWorldSpaceMatrix());
-            ((ModelPartMatrix) playerModel.rightPants).setWorldNormal(geckoModel.bipedRightLeg().getWorldSpaceNormal());
-        }
-
-        if (playerModel.rightSleeve instanceof ModelPartMatrix) {
-            ((ModelPartMatrix) playerModel.rightSleeve).setWorldXform(geckoModel.bipedRightArm().getWorldSpaceMatrix());
-            ((ModelPartMatrix) playerModel.rightSleeve).setWorldNormal(geckoModel.bipedRightArm().getWorldSpaceNormal());
-        }
-
-        if (playerModel.leftSleeve instanceof ModelPartMatrix) {
-            ((ModelPartMatrix) playerModel.leftSleeve).setWorldXform(geckoModel.bipedLeftArm().getWorldSpaceMatrix());
-            ((ModelPartMatrix) playerModel.leftSleeve).setWorldNormal(geckoModel.bipedLeftArm().getWorldSpaceNormal());
-        }
-
-        if (playerModel.ear instanceof ModelPartMatrix) {
-            ((ModelPartMatrix) playerModel.ear).setWorldXform(geckoModel.bipedHead().getWorldSpaceMatrix());
-            ((ModelPartMatrix) playerModel.ear).setWorldNormal(geckoModel.bipedHead().getWorldSpaceNormal());
-        }
+    public void setupAnim(AvatarRenderState state) {
+        super.setupAnim(state);
     }
 }

@@ -7,6 +7,7 @@ import net.minecraft.server.level.WorldGenRegion;
 import net.minecraft.util.RandomSource;
 import net.minecraft.world.level.ChunkPos;
 import net.minecraft.world.level.LevelReader;
+import net.minecraft.world.level.block.Block;
 import net.minecraft.world.level.block.Blocks;
 import net.minecraft.world.level.block.state.BlockState;
 import net.minecraft.world.level.levelgen.structure.templatesystem.StructurePlaceSettings;
@@ -26,7 +27,7 @@ public class BaseProcessor extends StructureProcessor {
     @Override
     public StructureTemplate.StructureBlockInfo process(LevelReader levelReader, BlockPos jigsawPiecePos, BlockPos jigsawPieceBottomCenterPos, StructureTemplate.StructureBlockInfo blockInfoLocal, StructureTemplate.StructureBlockInfo blockInfoGlobal, StructurePlaceSettings structurePlacementData, StructureTemplate template) {
         if (blockInfoGlobal.state().is(Blocks.COBBLED_DEEPSLATE)) {
-            if (levelReader instanceof WorldGenRegion worldGenRegion && !worldGenRegion.getCenter().equals(new ChunkPos(blockInfoGlobal.pos()))) {
+            if (levelReader instanceof WorldGenRegion worldGenRegion && !worldGenRegion.getCenter().equals(ChunkPos.containing(blockInfoGlobal.pos()))) {
                 return blockInfoGlobal;
             }
 
@@ -35,10 +36,14 @@ public class BaseProcessor extends StructureProcessor {
             RandomSource random = structurePlacementData.getRandom(blockInfoGlobal.pos());
 
             blockInfoGlobal = new StructureTemplate.StructureBlockInfo(blockInfoGlobal.pos(), chooseRandomState(random), blockInfoGlobal.nbt());
-            while (mutable.getY() > levelReader.getMinBuildHeight()
-                    && mutable.getY() < levelReader.getMaxBuildHeight()
+            // PORTING NOTE (1.21.1 -> 26.1.2): LevelHeightAccessor#getMinBuildHeight/getMaxBuildHeight were renamed
+            // to getMinY/getMaxY, and ChunkAccess#setBlockState's 3rd param changed from a boolean "isMoving" flag
+            // to an int block-update-flags bitmask (confirmed against real 26.1.2 sources) - Block.UPDATE_ALL (3)
+            // matches the old normal (non-piston-moved) placement semantics.
+            while (mutable.getY() > levelReader.getMinY()
+                    && mutable.getY() < levelReader.getMaxY()
                     && !currBlockState.isSolid()) {
-                levelReader.getChunk(mutable).setBlockState(mutable, chooseRandomState(random), false);
+                levelReader.getChunk(mutable).setBlockState(mutable, chooseRandomState(random), Block.UPDATE_ALL);
 
                 // Update to next position
                 mutable.move(Direction.DOWN);

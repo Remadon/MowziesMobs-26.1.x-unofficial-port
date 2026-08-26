@@ -8,12 +8,15 @@ import com.ilexiconn.llibrary.client.util.ClientUtils;
 import com.mojang.blaze3d.vertex.PoseStack;
 import com.mojang.blaze3d.vertex.VertexConsumer;
 import net.minecraft.client.Minecraft;
-import net.minecraft.client.renderer.MultiBufferSource;
+import net.minecraft.client.renderer.SubmitNodeCollector;
 import net.minecraft.client.renderer.entity.EntityRenderer;
 import net.minecraft.client.renderer.entity.EntityRendererProvider;
+import net.minecraft.client.renderer.entity.state.EntityRenderState;
+import net.minecraft.client.renderer.rendertype.RenderType;
+import net.minecraft.client.renderer.state.level.CameraRenderState;
 import net.minecraft.client.renderer.texture.OverlayTexture;
 import net.minecraft.core.BlockPos;
-import net.minecraft.resources.ResourceLocation;
+import net.minecraft.resources.Identifier;
 import net.minecraft.util.Mth;
 import net.minecraft.world.level.Level;
 import net.minecraft.world.level.block.state.BlockState;
@@ -24,8 +27,25 @@ import org.joml.Matrix4f;
 
 import java.util.Random;
 
-public class RenderSunstrike extends EntityRenderer<EntitySunstrike> {
-    public static final ResourceLocation TEXTURE = ResourceLocation.fromNamespaceAndPath(MMCommon.MODID, "textures/effects/sunstrike.png");
+/**
+ * PORTING NOTE: this renderer needs a large amount of live-entity/level state (block queries around the entity,
+ * variant seed, lingering/striking timers) - the render state captures a live entity reference, matching the
+ * established pattern used throughout this scope. Raw-vertex geometry building goes through the `pose` snapshot
+ * handed to the `submitCustomGeometry` callback rather than the (by-then mutated/popped) outer `poseStack` - see
+ * PORTING_NOTES.md's "submitCustomGeometry deferred pose" finding.
+ * <p>
+ * Also resolves the {@code Entity#noCulling} FIXME left in {@code EntitySunstrike}'s constructor (see
+ * PORTING_NOTES.md "Entity#noCulling field REMOVED ENTIRELY" section): overrides {@link #affectedByCulling} to
+ * always render regardless of the entity's computed bounding box, matching the old {@code noCulling = true} behavior
+ * (this entity draws a beam that can be much taller/wider than its actual hitbox).
+ * <p>
+ * NEW finding (add to PORTING_NOTES.md watch-list): {@code Entity#getCommandSenderWorld()} (the old
+ * {@code CommandSource}-inherited accessor, equivalent to {@code level()}) no longer exists anywhere in the 26.1.2
+ * source (grep-confirmed zero hits across the vanilla + NeoForge decompiled trees) - replaced with the plain
+ * {@code Entity#level()} call it always delegated to.
+ */
+public class RenderSunstrike extends EntityRenderer<EntitySunstrike, RenderSunstrike.SunstrikeRenderState> {
+    public static final Identifier TEXTURE = Identifier.fromNamespaceAndPath(MMCommon.MODID, "textures/effects/sunstrike.png");
     private static final Random RANDOMIZER = new Random(0);
     private static final float TEXTURE_WIDTH = 256;
     private static final float TEXTURE_HEIGHT = 32;
@@ -54,31 +74,52 @@ public class RenderSunstrike extends EntityRenderer<EntitySunstrike> {
     }
 
     @Override
-    public ResourceLocation getTextureLocation(EntitySunstrike entity) {
-        return RenderSunstrike.TEXTURE;
+    protected boolean affectedByCulling(EntitySunstrike entity) {
+        return false;
     }
 
     @Override
-    public void render(EntitySunstrike sunstrike, float entityYaw, float delta, PoseStack matrixStackIn, MultiBufferSource bufferIn, int packedLightIn) {
+    public SunstrikeRenderState createRenderState() {
+        return new SunstrikeRenderState();
+    }
+
+    @Override
+    public void extractRenderState(EntitySunstrike entity, SunstrikeRenderState state, float partialTicks) {
+        super.extractRenderState(entity, state, partialTicks);
+
+        state.entity = entity;
+        state.delta = partialTicks;
+    }
+
+    @Override
+    public void submit(SunstrikeRenderState state, PoseStack poseStack, SubmitNodeCollector renderTasks, CameraRenderState cameraState) {
+        EntitySunstrike sunstrike = state.entity;
+        float delta = state.delta;
+
         float maxY = (float) (MAX_HEIGHT - sunstrike.getY());
         if (maxY < 0) {
+            super.submit(state, poseStack, renderTasks, cameraState);
             return;
         }
         RANDOMIZER.setSeed(sunstrike.getVariant());
         boolean isLingering = sunstrike.isLingering(delta);
         boolean isStriking = sunstrike.isStriking(delta);
-        matrixStackIn.pushPose();
-        VertexConsumer ivertexbuilder = bufferIn.getBuffer(MMRenderType.getGlowingEffect(RenderSunstrike.TEXTURE));
+        int packedLight = state.lightCoords;
+        RenderType renderType = MMRenderType.getGlowingEffect(TEXTURE);
+
         if (isLingering) {
-            drawScorch(sunstrike, delta, matrixStackIn, ivertexbuilder, packedLightIn);
+            renderTasks.submitCustomGeometry(poseStack, renderType, (pose, vertexConsumer) ->
+                    drawScorch(sunstrike, delta, pose, vertexConsumer, packedLight));
         } else if (isStriking) {
-            drawStrike(sunstrike, maxY, delta, matrixStackIn, ivertexbuilder, packedLightIn);
+            renderTasks.submitCustomGeometry(poseStack, renderType, (pose, vertexConsumer) ->
+                    drawStrike(sunstrike, maxY, delta, pose, vertexConsumer, packedLight));
         }
-        matrixStackIn.popPose();
+
+        super.submit(state, poseStack, renderTasks, cameraState);
     }
 
-    private void drawScorch(EntitySunstrike sunstrike, float delta, PoseStack matrixStack, VertexConsumer builder, int packedLightIn) {
-        Level world = sunstrike.getCommandSenderWorld();
+    private void drawScorch(EntitySunstrike sunstrike, float delta, PoseStack.Pose parentPose, VertexConsumer builder, int packedLightIn) {
+        Level world = sunstrike.level();
         double ex = sunstrike.xOld + (sunstrike.getX() - sunstrike.xOld) * delta;
         double ey = sunstrike.yOld + (sunstrike.getY() - sunstrike.yOld) * delta;
         double ez = sunstrike.zOld + (sunstrike.getZ() - sunstrike.zOld) * delta;
@@ -91,18 +132,17 @@ public class RenderSunstrike extends EntityRenderer<EntitySunstrike> {
         float opacityMultiplier = (0.6F + RANDOMIZER.nextFloat() * 0.2F) * world.getMaxLocalRawBrightness(new BlockPos((int) ex, (int) ey, (int) ez));
         byte mirrorX = (byte) (RANDOMIZER.nextBoolean() ? -1 : 1);
         byte mirrorZ = (byte) (RANDOMIZER.nextBoolean() ? -1 : 1);
+        Matrix4f matrix4f = parentPose.pose();
+        Matrix3f matrix3f = parentPose.normal();
         for (BlockPos pos : BlockPos.betweenClosed(new BlockPos(minX, minY, minZ), new BlockPos(maxX, maxY, maxZ))) {
             BlockState block = world.getBlockState(pos.below());
             if (!block.isAir() && world.getMaxLocalRawBrightness(pos) > 3) {
-                drawScorchBlock(world, block, pos, ex, ey, ez, opacityMultiplier, mirrorX, mirrorZ, matrixStack, builder, packedLightIn);
+                drawScorchBlock(world, block, pos, ex, ey, ez, opacityMultiplier, mirrorX, mirrorZ, matrix4f, matrix3f, builder, packedLightIn);
             }
         }
     }
 
-    private void drawScorchBlock(Level world, BlockState block, BlockPos pos, double ex, double ey, double ez, float opacityMultiplier, byte mirrorX, byte mirrorZ, PoseStack matrixStack, VertexConsumer builder, int packedLightIn) {
-        PoseStack.Pose matrixstack$entry = matrixStack.last();
-        Matrix4f matrix4f = matrixstack$entry.pose();
-        Matrix3f matrix3f = matrixstack$entry.normal();
+    private void drawScorchBlock(Level world, BlockState block, BlockPos pos, double ex, double ey, double ez, float opacityMultiplier, byte mirrorX, byte mirrorZ, Matrix4f matrix4f, Matrix3f matrix3f, VertexConsumer builder, int packedLightIn) {
         if (block.isRedstoneConductor(world, pos)) {
             int bx = pos.getX(), by = pos.getY(), bz = pos.getZ();
             float opacity = (float) ((1 - (ey - by) / 2) * opacityMultiplier);
@@ -131,7 +171,7 @@ public class RenderSunstrike extends EntityRenderer<EntitySunstrike> {
         }
     }
 
-    private void drawStrike(EntitySunstrike sunstrike, float maxY, float delta, PoseStack matrixStack, VertexConsumer builder, int packedLightIn) {
+    private void drawStrike(EntitySunstrike sunstrike, float maxY, float delta, PoseStack.Pose parentPose, VertexConsumer builder, int packedLightIn) {
         float drawTime = sunstrike.getStrikeDrawTime(delta);
         float strikeTime = sunstrike.getStrikeDamageTime(delta);
         boolean drawing = sunstrike.isStrikeDrawing(delta);
@@ -139,12 +179,15 @@ public class RenderSunstrike extends EntityRenderer<EntitySunstrike> {
         if (drawing) {
             opacity *= DRAW_OPACITY_MULTIPLER;
         }
-        drawRing(drawing, drawTime, strikeTime, opacity, matrixStack, builder, packedLightIn);
-        matrixStack.mulPose(MathUtils.quatFromRotationXYZ(0, -Minecraft.getInstance().gameRenderer.getMainCamera().getYRot(), 0, true));
-        drawBeam(drawing, drawTime, strikeTime, opacity, maxY, matrixStack, builder, packedLightIn);
+        drawRing(drawing, drawTime, strikeTime, opacity, parentPose.pose(), parentPose.normal(), builder, packedLightIn);
+
+        PoseStack beamStack = new PoseStack();
+        beamStack.last().set(parentPose);
+        beamStack.mulPose(MathUtils.quatFromRotationXYZ(0, -Minecraft.getInstance().gameRenderer.getMainCamera().yRot(), 0, true));
+        drawBeam(drawing, drawTime, strikeTime, opacity, maxY, beamStack, builder, packedLightIn);
     }
 
-    private void drawRing(boolean drawing, float drawTime, float strikeTime, float opacity, PoseStack matrixStack, VertexConsumer builder, int packedLightIn) {
+    private void drawRing(boolean drawing, float drawTime, float strikeTime, float opacity, Matrix4f matrix4f, Matrix3f matrix3f, VertexConsumer builder, int packedLightIn) {
         int frame = (int) (((drawing ? drawTime : strikeTime) * (RING_FRAME_COUNT + 1)));
         if (frame > RING_FRAME_COUNT) {
             frame = RING_FRAME_COUNT;
@@ -154,9 +197,6 @@ public class RenderSunstrike extends EntityRenderer<EntitySunstrike> {
         float minV = drawing ? 0 : RING_FRAME_SIZE / TEXTURE_HEIGHT;
         float maxV = minV + RING_FRAME_SIZE / TEXTURE_HEIGHT;
         float offset = PIXEL_SCALE * RING_RADIUS * (frame % 2);
-        PoseStack.Pose matrixstack$entry = matrixStack.last();
-        Matrix4f matrix4f = matrixstack$entry.pose();
-        Matrix3f matrix3f = matrixstack$entry.normal();
         drawVertex(matrix4f, matrix3f, builder, -RING_RADIUS + offset, 0, -RING_RADIUS + offset, minU, minV, opacity, packedLightIn);
         drawVertex(matrix4f, matrix3f, builder, -RING_RADIUS + offset, 0, RING_RADIUS + offset, minU, maxV, opacity, packedLightIn);
         drawVertex(matrix4f, matrix3f, builder, RING_RADIUS + offset, 0, RING_RADIUS + offset, maxU, maxV, opacity, packedLightIn);
@@ -174,9 +214,8 @@ public class RenderSunstrike extends EntityRenderer<EntitySunstrike> {
         }
         float minV = frame / TEXTURE_HEIGHT;
         float maxV = (frame + 1) / TEXTURE_HEIGHT;
-        PoseStack.Pose matrixstack$entry = matrixStack.last();
-        Matrix4f matrix4f = matrixstack$entry.pose();
-        Matrix3f matrix3f = matrixstack$entry.normal();
+        Matrix4f matrix4f = matrixStack.last().pose();
+        Matrix3f matrix3f = matrixStack.last().normal();
         drawVertex(matrix4f, matrix3f, builder, -radius, 0, 0, BEAM_MIN_U, minV, opacity, packedLightIn);
         drawVertex(matrix4f, matrix3f, builder, -radius, maxY, 0, BEAM_MIN_U, maxV, opacity, packedLightIn);
         drawVertex(matrix4f, matrix3f, builder, radius, maxY, 0, BEAM_MAX_U, maxV, opacity, packedLightIn);
@@ -186,5 +225,10 @@ public class RenderSunstrike extends EntityRenderer<EntitySunstrike> {
     public void drawVertex(Matrix4f matrix, Matrix3f normals, VertexConsumer vertexBuilder, float offsetX, float offsetY, float offsetZ, float textureX, float textureY, float alpha, int packedLightIn) {
         VertexConsumer vertex = vertexBuilder.addVertex(matrix, offsetX, offsetY, offsetZ).setColor(1, 1, 1, 1 * alpha).setUv(textureX, textureY).setOverlay(OverlayTexture.NO_OVERLAY).setLight(packedLightIn);
         ClientUtils.transformNormals(vertex, normals, 1, 0, 1);
+    }
+
+    public static class SunstrikeRenderState extends EntityRenderState {
+        public EntitySunstrike entity;
+        public float delta;
     }
 }

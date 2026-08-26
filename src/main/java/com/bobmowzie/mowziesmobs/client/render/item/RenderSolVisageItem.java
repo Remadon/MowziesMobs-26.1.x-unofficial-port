@@ -2,11 +2,12 @@ package com.bobmowzie.mowziesmobs.client.render.item;
 
 import com.bobmowzie.mowziesmobs.client.model.armor.SolVisageModel;
 import com.bobmowzie.mowziesmobs.server.item.ItemSolVisage;
-import net.minecraft.client.renderer.MultiBufferSource;
-import net.minecraft.client.renderer.RenderType;
-import net.minecraft.resources.ResourceLocation;
-import org.jetbrains.annotations.Nullable;
-import software.bernie.geckolib.renderer.GeoItemRenderer;
+import com.geckolib.renderer.GeoItemRenderer;
+import com.geckolib.renderer.base.GeoRenderState;
+import net.minecraft.client.renderer.rendertype.RenderType;
+import net.minecraft.client.renderer.rendertype.RenderTypes;
+import net.minecraft.resources.Identifier;
+import org.jspecify.annotations.Nullable;
 
 public class RenderSolVisageItem extends GeoItemRenderer<ItemSolVisage> {
 
@@ -15,7 +16,7 @@ public class RenderSolVisageItem extends GeoItemRenderer<ItemSolVisage> {
     }
 
     @Override
-    public RenderType getRenderType(ItemSolVisage animatable, ResourceLocation texture, @Nullable MultiBufferSource bufferSource, float partialTick) {
-        return RenderType.armorCutoutNoCull(texture);
+    public @Nullable RenderType getRenderType(GeoRenderState renderState, Identifier texture) {
+        return RenderTypes.armorCutoutNoCull(texture);
     }
 }

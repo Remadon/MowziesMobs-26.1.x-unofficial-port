@@ -13,7 +13,7 @@ import net.minecraft.world.entity.*;
 import net.minecraft.world.entity.ai.attributes.AttributeSupplier;
 import net.minecraft.world.entity.ai.attributes.Attributes;
 import net.minecraft.world.entity.animal.Animal;
-import net.minecraft.world.entity.npc.Villager;
+import net.minecraft.world.entity.npc.villager.Villager;
 import net.minecraft.world.item.ItemStack;
 import net.minecraft.world.level.Level;
 import net.minecraft.world.level.LevelAccessor;
@@ -64,7 +64,7 @@ public class EntityElokosaHowler extends EntityElokosa {
             pack.get(i).index = i;
         }
 
-        if (!this.level().isClientSide && this.level().getDifficulty() == Difficulty.PEACEFUL)
+        if (!this.level().isClientSide() && this.level().getDifficulty() == Difficulty.PEACEFUL)
         {
             this.discard();
         }
@@ -90,14 +90,17 @@ public class EntityElokosaHowler extends EntityElokosa {
     }
 
     @Override
-    public boolean checkSpawnRules(LevelAccessor world, MobSpawnType reason) {
+    public boolean checkSpawnRules(LevelAccessor world, EntitySpawnReason reason) {
         List<LivingEntity> nearby = getEntityLivingBaseNearby(20, 10, 20, 20);
         for (LivingEntity nearbyEntity : nearby) {
             if (nearbyEntity instanceof EntityElokosaHowler || nearbyEntity instanceof Villager || nearbyEntity instanceof EntityUmvuthi || nearbyEntity instanceof Animal) {
                 return false;
             }
         }
-        return super.checkSpawnRules(world, reason) && world.getDifficulty() != Difficulty.PEACEFUL && (world.getTimeOfDay(0) >= 0.7609 || world.getTimeOfDay(0) < 0.23918849);
+        // FIXME 26.1.2 port: see EntityElokosa#isDayTime for details on this WorldClock-based approximation of the
+        // old Level#getTimeOfDay(float) celestial-angle fraction.
+        double timeOfDay = world instanceof Level level ? (level.getOverworldClockTime() % 24000L) / 24000.0 : 0.0;
+        return super.checkSpawnRules(world, reason) && world.getDifficulty() != Difficulty.PEACEFUL && (timeOfDay >= 0.7609 || timeOfDay < 0.23918849);
     }
 
     public int getMaxSpawnClusterSize()
@@ -119,7 +122,7 @@ public class EntityElokosaHowler extends EntityElokosa {
 
     @Nullable
     @Override
-    public SpawnGroupData finalizeSpawn(ServerLevelAccessor world, DifficultyInstance difficulty, MobSpawnType reason, @Nullable SpawnGroupData livingData) {
+    public SpawnGroupData finalizeSpawn(ServerLevelAccessor world, DifficultyInstance difficulty, EntitySpawnReason reason, @Nullable SpawnGroupData livingData) {
         int size = random.nextInt(2) + 2;
         float theta = (2 * (float) Math.PI / size);
         for (int i = 0; i <= size; i++) {
@@ -138,14 +141,14 @@ public class EntityElokosaHowler extends EntityElokosa {
     }
 
     @Override
-    public ItemStack getPickedResult(HitResult target) {
+    public ItemStack getPickResult() {
         return new ItemStack(ItemHandler.ELOKOSA_HOWLER_SPAWN_EGG.get());
     }
 
     @Override
     public void checkDespawn() {
         if (EventHooks.checkMobDespawn(this)) return;
-        if (this.level().getDifficulty() == Difficulty.PEACEFUL && this.shouldDespawnInPeaceful()) {
+        if (this.level().getDifficulty() == Difficulty.PEACEFUL && !this.getType().isAllowedInPeaceful()) {
             this.discard();
         } else if (!this.isPersistenceRequired() && !this.requiresCustomPersistence()) {
             Entity entity = this.level().getNearestPlayer(this, -1);

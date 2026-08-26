@@ -2,18 +2,23 @@ package com.bobmowzie.mowziesmobs.client.render.entity;
 
 import com.bobmowzie.mowziesmobs.client.model.tools.geckolib.MowzieGeoModel;
 import com.bobmowzie.mowziesmobs.server.entity.effects.geomancy.EntityGeomancyBase;
-import com.mojang.blaze3d.vertex.PoseStack;
-import com.mojang.blaze3d.vertex.VertexConsumer;
-import net.minecraft.client.renderer.MultiBufferSource;
+import com.geckolib.animatable.GeoEntity;
+import com.geckolib.renderer.GeoEntityRenderer;
 import net.minecraft.client.renderer.entity.EntityRendererProvider;
-import net.minecraft.resources.ResourceLocation;
-import software.bernie.geckolib.animatable.GeoEntity;
-import software.bernie.geckolib.cache.object.BakedGeoModel;
-import software.bernie.geckolib.renderer.GeoEntityRenderer;
+import net.minecraft.client.renderer.entity.state.EntityRenderState;
+import net.minecraft.resources.Identifier;
+import org.jspecify.annotations.Nullable;
 
-public class RenderGeomancyBase<T extends EntityGeomancyBase & GeoEntity> extends GeoEntityRenderer<T> {
-    private static final ResourceLocation TEXTURE_STONE = ResourceLocation.withDefaultNamespace("textures/blocks/stone.png");
-    private MultiBufferSource multiBufferSource;
+/**
+ * PORTING NOTE: `MultiBufferSource` is no longer reachable from renderer-side code during a render pass in the new
+ * deferred `SubmitNodeCollector` pipeline (see MowzieGeoEntityRenderer.java / porting report), so the old
+ * `multiBufferSource` field/getter/setter (used only by {@code RenderPillar#renderCube}, which itself no longer has
+ * a valid extension point - see that class) has been dropped. `preRender(...)` no longer has live-entity access at
+ * all (see GeoRenderer architecture notes) - the live entity is now captured via {@link #addRenderData} instead,
+ * which still runs once per render pass before rendering, same timing as the old `preRender` capture.
+ */
+public class RenderGeomancyBase<T extends EntityGeomancyBase & GeoEntity, R extends EntityRenderState> extends GeoEntityRenderer<T, R> {
+    private static final Identifier TEXTURE_STONE = Identifier.withDefaultNamespace("textures/blocks/stone.png");
     private T entity;
 
     protected RenderGeomancyBase(EntityRendererProvider.Context context, MowzieGeoModel<T> modelProvider) {
@@ -21,23 +26,13 @@ public class RenderGeomancyBase<T extends EntityGeomancyBase & GeoEntity> extend
     }
 
     @Override
-    public ResourceLocation getTextureLocation(EntityGeomancyBase entity) {
+    public Identifier getTextureLocation(R renderState) {
         return TEXTURE_STONE;
     }
 
     @Override
-    public void preRender(PoseStack poseStack, T animatable, BakedGeoModel model, MultiBufferSource bufferSource, VertexConsumer buffer, boolean isReRender, float partialTick, int packedLight, int packedOverlay, int color) {
-        this.multiBufferSource = bufferSource;
+    public void addRenderData(T animatable, @Nullable Void relatedObject, R renderState, float partialTick) {
         this.entity = animatable;
-        super.preRender(poseStack, animatable, model, bufferSource, buffer, isReRender, partialTick, packedLight, packedOverlay, color);
-    }
-
-    public void setCurrentMultiBufferSource(MultiBufferSource rtb) {
-        this.multiBufferSource = rtb;
-    }
-
-    public MultiBufferSource getCurrentMultiBufferSource() {
-        return this.multiBufferSource;
     }
 
     public T getEntity() {

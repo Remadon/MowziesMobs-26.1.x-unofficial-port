@@ -2,15 +2,12 @@
   "type": "minecraft:crafting_shaped",
   "category": "building",
   "key": {
-    "#": {
-      "item": "mowziesmobs:painted_acacia"
-    }
+    "#": "mowziesmobs:painted_acacia"
   },
   "pattern": [
     "###"
   ],
   "result": {
-    "count": 1,
     "id": "mowziesmobs:painted_acacia_slab"
   }
 }

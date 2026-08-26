@@ -6,7 +6,6 @@ import com.mojang.serialization.codecs.RecordCodecBuilder;
 import net.minecraft.world.item.ItemStack;
 import net.minecraft.world.level.storage.loot.LootContext;
 import net.minecraft.world.level.storage.loot.functions.LootItemConditionalFunction;
-import net.minecraft.world.level.storage.loot.functions.LootItemFunctionType;
 import net.minecraft.world.level.storage.loot.parameters.LootContextParams;
 import net.minecraft.world.level.storage.loot.predicates.LootItemCondition;
 import org.jetbrains.annotations.NotNull;
@@ -22,7 +21,9 @@ public class LootFunctionGrottolDeathType extends LootItemConditionalFunction {
 
     @Override
     protected @NotNull ItemStack run(@NotNull ItemStack stack, LootContext context) {
-        if (context.getParamOrNull(LootContextParams.THIS_ENTITY) instanceof EntityGrottol grottol) {
+        // PORTING NOTE (1.21.1 -> 26.1.2): LootContext#getParamOrNull was renamed to getOptionalParameter
+        // (confirmed against real 26.1.2 LootContext source - same @Nullable-returning semantics).
+        if (context.getOptionalParameter(LootContextParams.THIS_ENTITY) instanceof EntityGrottol grottol) {
             EntityGrottol.EnumDeathType deathType = grottol.getDeathType();
 
             if (deathType == EntityGrottol.EnumDeathType.NORMAL) {
@@ -36,7 +37,7 @@ public class LootFunctionGrottolDeathType extends LootItemConditionalFunction {
     }
 
     @Override
-    public @NotNull LootItemFunctionType<LootFunctionGrottolDeathType> getType() {
-        return LootTableHandler.GROTTOL_DEATH_TYPE.get();
+    public @NotNull MapCodec<LootFunctionGrottolDeathType> codec() {
+        return CODEC;
     }
 }
