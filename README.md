@@ -1,7 +1,9 @@
 # MowziesMobs - 26.1.x NeoForge Unofficial Port
+# For the Official Release: https://www.curseforge.com/minecraft/mc-mods/mowzies-mobs
+
+The goal of this project is a feature parity port with the 1.21 release for newer Minecraft (and GeckoLib) versions.
 This is an AI-assisted unofficial port to 26.1.x, currently this builds and runs, however there are many things that need a close eye and some game play review. 
 Many issues have already been fixed, and many more likely exist and are not yet discovered.
-The goal of this project is a feature parity port with the 1.21 release for newer Minecraft (and GeckoLib) versions.
 
 ##To Do
 Mobs:
