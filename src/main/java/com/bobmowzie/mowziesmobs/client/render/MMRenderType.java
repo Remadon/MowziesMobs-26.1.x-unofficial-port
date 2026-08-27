@@ -99,4 +99,16 @@ public abstract class MMRenderType {
             .build();
     public static final SingleQuadParticle.Layer TERRAIN_LAYER_NO_CULL =
             new SingleQuadParticle.Layer(false, TextureAtlas.LOCATION_BLOCKS, TERRAIN_NO_CULL_PIPELINE);
+
+    // Used by ParticleDecal (footprints, ground cracks): a flat quad laid on the ground, viewed from above in
+    // normal play but still correct if the camera ever ends up below it (underground, spectator, etc) - unlike
+    // the terrain/glow pipelines above, cull is disabled specifically so the quad doesn't need to guess which
+    // winding order faces "up".
+    private static final RenderPipeline DECAL_PIPELINE = RenderPipeline.builder(RenderPipelines.PARTICLE_SNIPPET)
+            .withLocation("pipeline/mowziesmobs_decal")
+            .withColorTargetState(new ColorTargetState(BlendFunction.TRANSLUCENT))
+            .withCull(false)
+            .build();
+    public static final SingleQuadParticle.Layer PARTICLE_LAYER_DECAL =
+            new SingleQuadParticle.Layer(true, TextureAtlas.LOCATION_PARTICLES, DECAL_PIPELINE);
 }

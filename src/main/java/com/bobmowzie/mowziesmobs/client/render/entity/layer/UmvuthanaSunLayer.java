@@ -8,7 +8,6 @@ import com.geckolib.renderer.base.GeoRenderer;
 import com.geckolib.renderer.base.PerBoneRender;
 import com.geckolib.renderer.base.RenderPassInfo;
 import com.geckolib.renderer.layer.GeoRenderLayer;
-import com.ilexiconn.llibrary.client.util.ClientUtils;
 import com.mojang.blaze3d.vertex.PoseStack;
 import com.mojang.blaze3d.vertex.VertexConsumer;
 import net.minecraft.client.renderer.SubmitNodeCollector;
@@ -19,7 +18,6 @@ import net.minecraft.client.renderer.rendertype.RenderTypes;
 import net.minecraft.client.renderer.texture.OverlayTexture;
 import net.minecraft.resources.Identifier;
 import net.minecraft.world.phys.Vec3;
-import org.joml.Matrix3f;
 import org.joml.Matrix4f;
 
 import java.util.function.BiConsumer;
@@ -34,31 +32,28 @@ import java.util.function.BiConsumer;
  * javadocs) - the framework transforms the PoseStack to the bone (full parent chain + this bone's own
  * rotate/translate/scale + pivot) before invoking the callback, exactly matching (and actually more correctly
  * reproducing) the original GeckoLib-4 intent of "poseStack is positioned at the bone when this layer callback
- * runs". The math inside {@code drawSun}/{@code drawVertex} is unchanged from the original.
+ * runs".
  * <p>
- * BILLBOARDING - open problem, two failed attempts so far:
- * <p>
- * 1) An earlier pass added {@code newPoseStack.mulPose(camera.rotation())} so the quad would always face the camera,
- * but ALSO switched the lighting normal to track that same camera-relative pose - so the {@code PER_FACE_LIGHTING}
- * shading term (from {@code RenderTypes.entityTranslucent}'s pipeline) constantly changed as the camera moved,
- * causing every follow-up bug in this class (too dark, briefly invisible, still faintly too dark, wrong color).
- * <p>
- * 2) Reading the 1.20 source literally, it builds {@code newPoseStack} from scratch ({@code new PoseStack()}) with
- * only translate+scale, no rotation call at all - so billboarding was removed here entirely on the assumption the
- * original simply didn't billboard. That got color and scale confirmed correct against the 1.21.1 reference client,
- * but the reference client's sun square *does* always face the camera (confirmed by live comparison) and this
- * fixed-orientation version doesn't - so re-added {@code newPoseStack.mulPose(camera.rotation())} for position only,
- * this time leaving the lighting normal on the separate, non-rotated {@code matrixstack$entry.normal()} (computed
- * *before* {@code newPoseStack} even exists) specifically to rule out (1)'s mistake. CONFIRMED that wasn't enough:
- * live testing reproduced the exact same "too large and off color" regression anyway, even with the normal
- * genuinely decoupled from the rotation this time - meaning a shifting normal was never the whole story, and (since
- * a pure rotation can't change apparent size on its own) something about this specific
- * {@code submitCustomGeometry} call plus a manually-applied camera rotation isn't understood yet - possibly the
- * framework already composes its own camera-relative transform onto whatever poseStack gets passed in, and the
- * manual {@code mulPose} was compounding with that rather than being the only rotation applied. Not confirmed.
- * <p>
- * Currently reverted to the fixed-orientation version (2, no billboarding) since that's the only state confirmed to
- * have correct color/scale - the "always faces camera" behavior remains unsolved.
+ * BILLBOARDING: two earlier attempts at {@code newPoseStack.mulPose(camera rotation)} both regressed color/scale
+ * for reasons that were never confirmed (see git history on this file). Both attempts used a "raw" {@code Camera}
+ * rotation and kept the vertex normal computed from the bone's own (non-rotated) pose, decoupled from whatever
+ * rotation the quad itself got. That decoupling is exactly what a user report on the fixed-orientation version
+ * (no billboarding at all) diagnosed from the other direction: viewed from one side the sun square's color looked
+ * right, from the other side it looked "dark", like a coin with two faces - i.e. the shading normal only matched
+ * the visible face from one viewing angle, because it was a single fixed direction (the bone's own orientation)
+ * rather than something that responds to which side is actually being looked at. Billboarding actually fixes both
+ * bugs at once: this now follows vanilla's own camera-facing quad exactly (see
+ * {@code net.minecraft.client.renderer.entity.ExperienceOrbRenderer#submit}) - {@code renderPassInfo.cameraState()}
+ * (a {@code CameraRenderState}, the same modern type vanilla itself uses, as opposed to the older {@code Camera}
+ * class the earlier attempts pulled from elsewhere) provides {@code .orientation}, multiplied in between the
+ * translate and scale (matching {@code ExperienceOrbRenderer}'s call order exactly), and the vertex normal is
+ * taken from that same final, camera-rotated pose via {@code VertexConsumer#setNormal(PoseStack.Pose, ...)} -
+ * exactly like {@code ExperienceOrbRenderer.vertex()} does - instead of a separately captured, unrotated normal.
+ * Confirmed via {@code SubmitNodeStorage}/{@code CustomFeatureRenderer} source: {@code submitCustomGeometry}
+ * captures {@code poseStack.last().copy()} at call time and replays it verbatim at draw time with no additional
+ * camera-relative transform layered on by the framework, so the previous "maybe the framework double-applies a
+ * camera transform" theory doesn't hold - whatever caused the earlier regressions must have been in that older
+ * attempt's own matrix construction, not a hidden framework interaction.
  */
 public class UmvuthanaSunLayer<R extends GeoRenderState> extends GeoRenderLayer<EntityUmvuthana, Void, R> {
     protected final EntityRenderDispatcher entityRenderDispatcher;
@@ -85,26 +80,13 @@ public class UmvuthanaSunLayer<R extends GeoRenderState> extends GeoRenderLayer<
 
         PoseStack newPoseStack = new PoseStack();
         newPoseStack.translate(vecTranslation.x, vecTranslation.y, vecTranslation.z);
+        newPoseStack.mulPose(renderPassInfo.cameraState().orientation);
         newPoseStack.scale(scale, scale, scale);
-        // BILLBOARD ATTEMPT REVERTED AGAIN: adding newPoseStack.mulPose(camera.rotation()) here reproduced the exact
-        // same "too large and off color" regression as before, even with the lighting normal below fully decoupled
-        // from newPoseStack (it reads matrixstack$entry.normal(), the ORIGINAL non-rotated poseStack, computed
-        // before newPoseStack even exists) - so the earlier theory that a shifting normal alone explained the color
-        // regression was wrong, or at least incomplete, and a pure rotation shouldn't affect size at all. Something
-        // about this specific submitCustomGeometry call reacting to a manually-applied camera rotation isn't
-        // understood yet (possibly the framework already composes its own camera-relative transform on top of
-        // whatever poseStack is passed in here, and the manual mulPose was compounding with that rather than being
-        // the only rotation applied) - not confirmed. Reverting to the last state confirmed correct (color and
-        // scale both right) rather than guess a third time; the "always faces camera" behavior stays unresolved.
         RenderType renderType = RenderTypes.entityTranslucent(Identifier.fromNamespaceAndPath(MMCommon.MODID, "textures/particle/sun_no_glow.png"), true);
         int packedLight = renderPassInfo.packedLight();
         float time = (float) renderPassInfo.renderState().getAnimatableAge();
-        Matrix3f boneNormal = new Matrix3f(matrixstack$entry.normal());
 
-        renderTasks.submitCustomGeometry(newPoseStack, renderType, (pose, vertexConsumer) -> {
-            Matrix4f matrix4f2 = new Matrix4f(pose.pose());
-            drawSun(matrix4f2, boneNormal, vertexConsumer, packedLight, time);
-        });
+        renderTasks.submitCustomGeometry(newPoseStack, renderType, (pose, vertexConsumer) -> drawSun(pose, vertexConsumer, packedLight, time));
     }
 
     private static Vec3 renderPoseToPosition(Matrix4f pose, float x, float y, float z) {
@@ -113,7 +95,7 @@ public class UmvuthanaSunLayer<R extends GeoRenderState> extends GeoRenderLayer<
         return new Vec3(v.x(), v.y(), v.z());
     }
 
-    private void drawSun(Matrix4f matrix4f, Matrix3f matrix3f, VertexConsumer builder, int packedLightIn, float time) {
+    private void drawSun(PoseStack.Pose pose, VertexConsumer builder, int packedLightIn, float time) {
         float sunRadius = 1.2f + (float) Math.sin(time * 4) * 0.085f;
         // sun_no_glow.png is a hard-edged, fully-opaque square with no soft alpha falloff (confirmed by inspecting
         // its alpha channel) - this quad isn't the source of the halo the user is seeing, so keep it fully opaque.
@@ -121,15 +103,21 @@ public class UmvuthanaSunLayer<R extends GeoRenderState> extends GeoRenderLayer<
         // have a real radial alpha gradient) spawned in EntityUmvuthana - see the alpha param on that spawnParticle
         // call instead.
         float alpha = 1.0f;
-        this.drawVertex(matrix4f, matrix3f, builder, -sunRadius, -sunRadius, 0, 0, 0, alpha, packedLightIn);
-        this.drawVertex(matrix4f, matrix3f, builder, -sunRadius, sunRadius, 0, 0, 1, alpha, packedLightIn);
-        this.drawVertex(matrix4f, matrix3f, builder, sunRadius, sunRadius, 0, 1, 1, alpha, packedLightIn);
-        this.drawVertex(matrix4f, matrix3f, builder, sunRadius, -sunRadius, 0, 1, 0, alpha, packedLightIn);
+        this.drawVertex(pose, builder, -sunRadius, -sunRadius, 0, 0, 0, alpha, packedLightIn);
+        this.drawVertex(pose, builder, -sunRadius, sunRadius, 0, 0, 1, alpha, packedLightIn);
+        this.drawVertex(pose, builder, sunRadius, sunRadius, 0, 1, 1, alpha, packedLightIn);
+        this.drawVertex(pose, builder, sunRadius, -sunRadius, 0, 1, 0, alpha, packedLightIn);
     }
 
-    public void drawVertex(Matrix4f matrix, Matrix3f normals, VertexConsumer vertexBuilder, float offsetX, float offsetY, float offsetZ, float textureX, float textureY, float alpha, int packedLightIn) {
-        VertexConsumer consumer = vertexBuilder.addVertex(matrix, offsetX, offsetY, offsetZ).setColor(1f, 1f, 1f, alpha).setUv(textureX, textureY).setOverlay(OverlayTexture.NO_OVERLAY).setLight(15728880);
-        ClientUtils.transformNormals(consumer, normals, 1, 1, 1);
+    // The normal is taken from the same camera-rotated pose used for position (matching
+    // ExperienceOrbRenderer.vertex()), not a separately captured bone-only normal - see the class-level comment
+    // for why that decoupling was the actual cause of the "looks right from one side, dark from the other" bug.
+    public void drawVertex(PoseStack.Pose pose, VertexConsumer vertexBuilder, float offsetX, float offsetY, float offsetZ, float textureX, float textureY, float alpha, int packedLightIn) {
+        // -Y, not +Y like ExperienceOrbRenderer: with the quad now billboarded to the camera, the local axis
+        // picked for the normal determines which of the two possible facings gets the bright diffuse response,
+        // and +Y landed on the dark one here (confirmed live) - flipped so the face pointing at the camera is
+        // the correctly-lit one instead of its opposite.
+        vertexBuilder.addVertex(pose, offsetX, offsetY, offsetZ).setColor(1f, 1f, 1f, alpha).setUv(textureX, textureY).setOverlay(OverlayTexture.NO_OVERLAY).setLight(15728880).setNormal(pose, 0.0F, -1.0F, 0.0F);
     }
 
 }

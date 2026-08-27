@@ -115,12 +115,71 @@ public class ModelUmvuthana extends MowzieGeoModel<EntityUmvuthana> {
         float locomotionAnimController = getControllerValue("locomotionAnimController");
         float runAnimBlend = getControllerValue("walkRunSwitchController");
         float walkAnim = 1.0f - runAnimBlend;
+
+        // FOLLOW-UP FIX (mask tilted down ~30-45 degrees while walking passively, reference client keeps it level):
+        // walkForwardAnim/walkBackwardAnim/walkLeftAnim/walkRightAnim/runAnim below all add a walk-cycle body sway
+        // via addRotX/addRotY/addRotZ on hips/stomach/chest/neck/head - intentional on the character's own body
+        // mesh, but "mask" (and its child "maskTwitcher", where UmvuthanaArmorLayer renders the worn mask) is a
+        // child of "head", itself a descendant of hips through stomach/chest/neck, so it inherits ALL of that
+        // combined sway. The reference client's mask reads as hovering independently of the body's motion rather
+        // than rigidly riding along with it. Snapshotting each of these bones' rotation immediately before this
+        // block and diffing it immediately after captures exactly how much these calls just added (regardless of
+        // which combination of directions/run contributed), and applying the negation to "mask" cancels that
+        // inherited sway back out without touching any of them directly.
+        // <p>
+        // FOLLOW-UP FIX #2 (mask still tilted "a bit" after tracking only head/neck): hips.addRotX and
+        // stomach.addRotX (a steady, non-oscillating forward lean while moving, not just a head nod) are also
+        // ancestors of mask in the same chain and were never being measured/countered. Extended to track all five
+        // bones the procedural code actually rotates on the way from hips to head.
+        // <p>
+        // FOLLOW-UP FIX #3 (mask drifted further out of place the longer the entity kept moving): "mask" has no
+        // keyframe track in ANY looping clip (confirmed against the animation JSON directly), so nothing resets it
+        // between frames - an earlier version *added* the correction every frame instead of setting it, so it
+        // accumulated the same way root's old unprotected scale did. Uses an absolute set below instead.
+        // <p>
+        // FOLLOW-UP FIX #4 (root cause found, upstream of this whole mechanism): disabling this counter-rotation
+        // entirely (forcing mask to a flat 0,0,0) confirmed the mask still tilted toward the ground while walking
+        // forward with ZERO correction applied - meaning the bug was never in this cancellation math at all, it was
+        // in how RenderUmvuthana's per-frame resets (chest, during passive movement; several leg bones, during
+        // aggressive movement - both added to stop those specific bones' animation from compounding across frames,
+        // same category of bug root's scale reset already had) worked. Live logging of each bone's raw rotation
+        // showed the never-animated "Joint" compensator bones (chestJoint/neckJoint/headJoint, which structurally
+        // carry the S-curve spine's own non-zero rotations) always read back exactly 0 - meaning the renderer
+        // composes a bone's final rotation as (its structural base rotation) + (this live snapshot value as an
+        // ANIMATION OFFSET, 0 when nothing overrides it) - it's not an absolute value. MowzieGeoBone#saveInitialSnapshot
+        // was resetting a bone's rotation offset to its OWN base rotation instead of to 0, silently adding that
+        // whole base rotation a second time for any bone with a non-zero one (chest, several leg bones) - fixed at
+        // the source in MowzieGeoBone.java (see its own note) rather than patched around here, since that bug
+        // affects every current and future caller of resetToInitialSnapshot(), not just this file's resets.
+        // <p>
+        // With that fixed, this cancellation mechanism should now be working from a correct baseline. Restored to
+        // the scalar per-axis sum (tracking hips/stomach/chest/neck/head, per fix #2's reasoning above).
+        String[] maskBobBones = {"hips", "stomach", "chest", "neck", "head"};
+        MowzieGeoBone[] maskBobTargets = new MowzieGeoBone[maskBobBones.length];
+        double[] maskBobX0 = new double[maskBobBones.length];
+        double[] maskBobY0 = new double[maskBobBones.length];
+        double[] maskBobZ0 = new double[maskBobBones.length];
+        for (int i = 0; i < maskBobBones.length; i++) {
+            maskBobTargets[i] = getMowzieBone(maskBobBones[i]);
+            maskBobX0[i] = maskBobTargets[i].getRotX();
+            maskBobY0[i] = maskBobTargets[i].getRotY();
+            maskBobZ0[i] = maskBobTargets[i].getRotZ();
+        }
+
         walkForwardAnim((float) (forward * locomotionAnimController * walkAnim), limbSwing, limbSwingAmount, animSpeed);
         walkBackwardAnim((float) (backward * locomotionAnimController * walkAnim), limbSwing, limbSwingAmount, animSpeed);
         walkLeftAnim((float) (left * locomotionAnimController * walkAnim), limbSwing, limbSwingAmount, animSpeed);
         walkRightAnim((float) (right * locomotionAnimController * walkAnim), limbSwing, limbSwingAmount, animSpeed);
 
         runAnim(locomotionAnimController * runAnimBlend, limbSwing, limbSwingAmount, animSpeed);
+
+        double bodyBobX = 0, bodyBobY = 0, bodyBobZ = 0;
+        for (int i = 0; i < maskBobBones.length; i++) {
+            bodyBobX += maskBobTargets[i].getRotX() - maskBobX0[i];
+            bodyBobY += maskBobTargets[i].getRotY() - maskBobY0[i];
+            bodyBobZ += maskBobTargets[i].getRotZ() - maskBobZ0[i];
+        }
+        mask.setRot((float) -bodyBobX, (float) -bodyBobY, (float) -bodyBobZ);
     }
 
     private void runAnim(float blend, float limbSwing, float limbSwingAmount, float speed) {

@@ -88,30 +88,63 @@ public class RenderUmvuthana extends MowzieGeoEntityRenderer<EntityUmvuthana, Li
         MowzieGeckoEntity liveEntity = renderPassInfo.getGeckolibData(LIVE_ANIMATABLE);
         if (!(liveEntity instanceof EntityUmvuthana entity) || !getMowzieGeoModel().isInitialized()) return;
 
+        LivingEntityRenderState state = renderPassInfo.renderState();
+        Long instanceId = state.getGeckolibData(DataTickets.ANIMATABLE_INSTANCE_ID);
+        AnimatableManager<EntityUmvuthana> manager = castManager(state.getGeckolibData(DataTickets.ANIMATABLE_MANAGER));
+        if (instanceId == null || manager == null || manager.getAnimationControllers().isEmpty()) return;
+
+        AnimationController<EntityUmvuthana> controller = manager.getAnimationControllers().values().iterator().next();
+        AnimationTest<EntityUmvuthana> animationTest = new AnimationTest<>(entity, state, manager, controller);
+
         // GeckoLib registers two bone updaters per render pass, in this fixed order: renderer::applyAnimationControllers
         // (bakes the file-based keyframe animations - walk_neutral, mask_twitch, etc. - into each bone's frameSnapshot)
         // THEN renderer::adjustModelBonesForRender (this method). A blanket resetAllBonesToInitialSnapshot() here would
         // wipe out that keyframe pose before setCustomAnimations's own additive math runs on top of it - that's what
-        // broke the walk/idle animations and made the arms disappear on the previous attempt at this fix. Only "root"
-        // actually needs resetting: it's the one bone setCustomAnimations scales unconditionally every frame
-        // (root.multiplyScale(0.83/0.93, ...)) with no keyframe track of its own to refresh it, so without resetting
-        // just this bone specifically, that multiply compounds every frame and shrinks the whole model toward zero
-        // within a fraction of a second (the very first attempt's bug). The walkForward/walkBackward/run bone
-        // rotations are all gated behind a movement "blend" that's 0 while idle, so they don't have the same
-        // unbounded-compounding problem and must NOT be reset here.
+        // broke the walk/idle animations and made the arms disappear on the previous attempt at this fix. "root"
+        // needs resetting unconditionally: it's a bone setCustomAnimations scales every frame
+        // (root.multiplyScale(0.83/0.93, ...)) with no keyframe track of its own, in ANY clip, to refresh it, so
+        // without resetting it specifically, that multiply compounds every frame and shrinks the whole model toward
+        // zero within a fraction of a second (the very first attempt's bug).
+        //
+        // FOLLOW-UP FIX (massive rotation on the upper body/arms while walking passively; body launching into the
+        // sky and vanishing while walking aggressively): the walkForward/walkBackward/run bone rotations ARE gated
+        // behind a movement "blend" that's 0 while idle - true, and idle is fine - but the previous comment's
+        // conclusion that they therefore "don't have the same unbounded-compounding problem" turned out to be
+        // wrong specifically while *moving*. Checked directly against umvuthana.animation.json (bone-identical to
+        // the original 1.21.1 mod's own file, confirmed earlier - this is the original's authored data, not
+        // corrupted): walk_neutral has NO keyframe track at all for chest/leftArm/rightArm, and walk_aggressive has
+        // none for hips/leftArm and almost the entire leg chain (leftThigh/leftShin/leftAnkle/leftFoot/
+        // rightThigh/rightShin/rightAnkle/rightFoot). idle_neutral and idle_aggressive cover all of these. So the
+        // instant the entity starts moving and the active clip switches to walk_neutral/walk_aggressive, those
+        // specific bones stop getting a fresh per-frame keyframe bake - same exact "root" problem, just clip- and
+        // bone-specific instead of universal. hips is a *position* add (addPosY), so its version of this compounds
+        // into launching the whole body skyward every frame - the "vanish into the sky" symptom, and much worse for
+        // the aggressive clip since it leaves nearly the whole leg chain unprotected too, not just hips. Fixed by
+        // resetting exactly the bones known to be uncovered for whichever of the two moving clips is currently
+        // active (never both sets at once, and never touching bones idle_neutral/idle_aggressive/the relevant
+        // moving clip actually DOES cover, so their real keyframe-driven baseline stance is left alone). leftToesBack/
+        // rightToesBack are uncovered in all four looping clips, so those two reset unconditionally, same as root.
         MowzieGeoBone rootBone = getMowzieGeoModel().getMowzieBone("root");
         if (rootBone != null) getMowzieGeoModel().resetBoneToSnapshot(rootBone);
+        resetBones("leftToesBack", "rightToesBack");
+        if (animationTest.isMoving()) {
+            if (entity.isAggressive()) {
+                resetBones("hips", "leftThigh", "leftShin", "leftAnkle", "leftFoot", "rightThigh", "rightShin", "rightAnkle", "rightFoot", "leftArm");
+            } else {
+                resetBones("chest", "leftArm", "rightArm");
+            }
+        }
 
-        LivingEntityRenderState state = renderPassInfo.renderState();
-        Long instanceId = state.getGeckolibData(DataTickets.ANIMATABLE_INSTANCE_ID);
-        AnimatableManager<EntityUmvuthana> manager = castManager(state.getGeckolibData(DataTickets.ANIMATABLE_MANAGER));
-
-        if (instanceId == null || manager == null || manager.getAnimationControllers().isEmpty()) return;
-
-        AnimationController<EntityUmvuthana> controller = manager.getAnimationControllers().values().iterator().next();
         // setCustomAnimations is a plain (non-override) method declared directly on ModelUmvuthana, not part of the
         // MowzieGeoModel<T> supertype getMowzieGeoModel() is statically typed as - needs the concrete cast.
-        ((ModelUmvuthana) getMowzieGeoModel()).setCustomAnimations(entity, instanceId, new AnimationTest<>(entity, state, manager, controller));
+        ((ModelUmvuthana) getMowzieGeoModel()).setCustomAnimations(entity, instanceId, animationTest);
+    }
+
+    private void resetBones(String... names) {
+        for (String name : names) {
+            MowzieGeoBone bone = getMowzieGeoModel().getMowzieBone(name);
+            if (bone != null) getMowzieGeoModel().resetBoneToSnapshot(bone);
+        }
     }
 
     @SuppressWarnings("unchecked")

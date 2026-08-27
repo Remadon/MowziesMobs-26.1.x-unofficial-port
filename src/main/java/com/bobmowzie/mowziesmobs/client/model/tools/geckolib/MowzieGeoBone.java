@@ -551,9 +551,29 @@ public class MowzieGeoBone {
         return POSE.computeIfAbsent(bone, b -> new Matrix4f());
     }
 
+    // FOLLOW-UP FIX (RenderUmvuthana's per-frame bone resets - root/chest/leg bones etc. - silently zeroed out
+    // those bones' *structural* rotation instead of just their *animation offset*): this used to explicitly set
+    // initialSnapshot's rotation to (bone.baseRotX(), baseRotY(), baseRotZ()), on the assumption that a bone's
+    // snapshot rotation represents its final/absolute rotation, so "resetting" should mean "back to the geo.json's
+    // authored rotation." Confirmed wrong by live debugging: bones that are NEVER touched by any keyframe track or
+    // procedural code (e.g. Umvuthana's chestJoint/neckJoint/headJoint compensator bones, which structurally have
+    // non-zero rotations of their own - see the S-curve spine chain elsewhere in this codebase) read back a live
+    // snapshot rotation of exactly 0 the whole time, and the model renders correctly with those bones apparently
+    // untouched - meaning the renderer must be composing final rotation as (structural base rotation, applied via
+    // the bone hierarchy itself) + (this snapshot's rotation, as an ANIMATION OFFSET on top, defaulting to 0 when
+    // nothing overrides it) - NOT using the snapshot as an absolute value. So the "no override yet" state for any
+    // bone's rotation is snapshot=0, regardless of that bone's own base rotation. Setting it to
+    // (baseRotX,baseRotY,baseRotZ) instead - a large non-zero value for bones like "chest" (55 degrees) - added
+    // that entire base rotation a SECOND time on top of the one already baked into the bone hierarchy, which is
+    // exactly why RenderUmvuthana's chest/leg-bone resets (needed to stop those bones' animation from compounding
+    // across frames while walking) were themselves introducing a large, separate rotation error. This never showed
+    // up on "root" or "hips" specifically only because both of those bones happen to have a base rotation of
+    // exactly 0 - "reset to base" and "reset to 0" were indistinguishable for them, coincidentally masking the bug
+    // until it got applied to a bone (chest) with a real non-zero base rotation. Leaving initialSnapshot's rotation
+    // at BoneSnapshot.create(bone)'s own natural default (confirmed to be 0) instead of overriding it fixes this
+    // for every current and future caller of resetToInitialSnapshot(), not just this one call site.
     public void saveInitialSnapshot() {
         initialSnapshot = BoneSnapshot.create(bone);
-        initialSnapshot.setRotation(bone.baseRotX(), bone.baseRotY(), bone.baseRotZ());
     }
 
     public BoneSnapshot getInitialSnapshot() {

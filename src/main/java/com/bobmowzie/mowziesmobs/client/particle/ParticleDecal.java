@@ -5,42 +5,33 @@ import com.bobmowzie.mowziesmobs.client.particle.types.DecalParticleType;
 import com.bobmowzie.mowziesmobs.client.particle.util.AdvancedParticleBase;
 import com.bobmowzie.mowziesmobs.client.particle.util.ParticleComponent;
 import com.bobmowzie.mowziesmobs.client.particle.util.ParticleRotation;
-import com.mojang.blaze3d.vertex.VertexConsumer;
-import net.minecraft.client.Camera;
+import com.bobmowzie.mowziesmobs.client.render.MMRenderType;
 import net.minecraft.client.multiplayer.ClientLevel;
 import net.minecraft.client.particle.Particle;
 import net.minecraft.client.particle.ParticleProvider;
-import net.minecraft.client.particle.ParticleRenderType;
 import net.minecraft.client.particle.SpriteSet;
-import net.minecraft.core.BlockPos;
 import net.minecraft.core.Holder;
 import net.minecraft.core.particles.ParticleType;
 import net.minecraft.util.RandomSource;
 import net.minecraft.world.level.Level;
-import net.minecraft.world.level.LevelReader;
-import net.minecraft.world.level.block.RenderShape;
-import net.minecraft.world.level.block.state.BlockState;
-import net.minecraft.world.phys.AABB;
-import net.minecraft.world.phys.Vec2;
-import net.minecraft.world.phys.Vec3;
-import net.minecraft.world.phys.shapes.VoxelShape;
 
-import java.util.Arrays;
-import java.util.OptionalDouble;
-
-// ARCHITECTURAL LIMITATION (see final report): a decal emits one arbitrary quad per underlying block position
-// it projects onto (an AABB region can cover several blocks), with per-vertex coordinates computed from each
-// block's collision shape. The new particle rendering pipeline (QuadParticleRenderState#add(), reached via
-// SingleQuadParticle#extract()) only accepts "world position + rotation quaternion + one uniform scale" per
-// call - i.e. exactly one rotated *square* per particle - and provides no raw VertexConsumer access during
-// extraction, so this can't be expressed at all. Reproducing this particle requires a custom
-// net.minecraft.client.particle.ParticleGroup (registered via NeoForge's RegisterParticleGroupsEvent) with its
-// own render-state/renderer that can write an arbitrary number of arbitrary quads into a VertexConsumer, the
-// way this class's render() method used to. That is out of scope for this file (new infrastructure, likely
-// alongside MMRenderType under client/render, which is out of scope for this pass) so getGroup() below returns
-// NO_RENDER: the particle still ticks, it just doesn't draw anything until that custom renderer exists. The
-// old render() logic is kept below (renamed off @Override, with the renamed Camera API updated) so it's ready
-// to be reconnected once a custom render pipeline exists.
+// PORTING NOTE (26.1.2): the original render() projected an arbitrary quad per underlying block position (an
+// AABB region can span several blocks), clipped to each block's own collision shape - true per-block ground
+// conforming, needed if a decal ever spans uneven terrain. The new particle rendering pipeline
+// (QuadParticleRenderState#add(), reached via SingleQuadParticle#extract()) only accepts "world position +
+// rotation quaternion + one uniform scale" per call - i.e. exactly one rotated *square*, with no raw
+// VertexConsumer access - so that per-block clipping can't be expressed. In practice every caller of
+// spawnDecal (footprints, the geomancy ground crack) uses a decal small enough to land on a single block almost
+// all the time, so this is now just a flat single quad instead: rotation is fixed EulerAngles (yaw = the
+// caller's angle, pitch = 90 degrees to lay the vertical billboard quad down flat) rather than FaceCamera, so
+// it doesn't billboard to the camera like a normal particle - it lies on the ground and stays there.
+// getQuadSize() reproduces the original's exact world-space half-extent formula (particleScale * spriteScale *
+// sqrt(2)) so the visible size matches the pre-port mod. MMRenderType.PARTICLE_LAYER_DECAL (cull disabled) is
+// used instead of the shared default particle layer so the quad is visible from below too, since there's no
+// need to work out which winding order faces "up" when cull is just off. If a decal ever needs to conform to
+// genuinely uneven multi-block terrain, that would require a custom net.minecraft.client.particle.ParticleGroup
+// (registered via NeoForge's RegisterParticleGroupsEvent) with its own renderer that can write arbitrary quads -
+// out of scope here since no current caller needs it.
 public class ParticleDecal extends AdvancedParticleBase {
     protected int spriteSize = 8;
     protected int bufferSize = 32;
@@ -54,129 +45,30 @@ public class ParticleDecal extends AdvancedParticleBase {
         super(worldIn, xCoordIn, yCoordIn, zCoordIn, motionX, motionY, motionZ, rotation, scale, r, g, b, a, drag, duration, emissive, false, components);
         this.spriteSize = spriteSize;
         this.bufferSize = bufferSize;
+        this.layer = MMRenderType.PARTICLE_LAYER_DECAL;
         this.setSpriteFromAge(sprites);
         this.sprites = sprites;
     }
 
-    private static OptionalDouble max(double... v) {
-        return Arrays.stream(v).max();
-    }
-
-    // NB: not an @Override anymore - Particle#render(VertexConsumer, Camera, float) no longer exists. See the
-    // class-level comment above for why this can't currently be reconnected to the new extract()-based
-    // pipeline, and what would be needed to do so.
-    public void render(VertexConsumer buffer, Camera renderInfo, float partialTicks) {
-        alpha = prevAlpha + (alpha - prevAlpha) * partialTicks;
-        if (alpha < 0.01) alpha = 0.01f;
-        rCol = prevRed + (red - prevRed) * partialTicks;
-        gCol = prevGreen + (green - prevGreen) * partialTicks;
-        bCol = prevBlue + (blue - prevBlue) * partialTicks;
-        particleScale = prevScale + (scale - prevScale) * partialTicks;
-
-        for (ParticleComponent component : components) {
-            component.preRender(this, partialTicks);
-        }
-
-        if (!doRender) return;
-
-        this.setSprite(sprites.get(Math.min(this.age, 5), 5));
-
-        float decalRot = 0.0f;
-        if (rotation instanceof ParticleRotation.EulerAngles) {
-            ParticleRotation.EulerAngles eulerRot = (ParticleRotation.EulerAngles) rotation;
-            float rotY = eulerRot.prevYaw + (eulerRot.yaw - eulerRot.prevYaw) * partialTicks;
-            decalRot = rotY;
-        }
-        else if (rotation instanceof ParticleRotation.FaceCamera faceCamera) {
-            float rotY = faceCamera.prevAngle + (faceCamera.angle - faceCamera.prevAngle) * partialTicks;
-            decalRot = rotY;
-        }
-
-        float u0 = this.getU0();
-        float u1 = this.getU1();
-        float v0 = this.getV0();
-        float v1 = this.getV1();
-        int lightColor = this.getLightCoords(partialTicks);
-
-        float spriteScale = (float) spriteSize / (float) bufferSize;
-        Vec3 corner0 = new Vec3(-particleScale/2, 0, -particleScale/2).yRot(decalRot);
-        Vec3 corner1 = new Vec3(particleScale/2, 0, particleScale/2).yRot(decalRot);
-        double extent = max(corner0.x(), corner1.x(), corner0.z(), corner1.z()).orElse(1);
-        Vec3 minCorner = new Vec3(-extent, -particleScale, -extent).add(x, y, z);
-        Vec3 maxCorner = new Vec3(extent, particleScale, extent).add(x, y, z);
-
-        for(BlockPos blockpos : BlockPos.betweenClosed(BlockPos.containing(minCorner), BlockPos.containing(maxCorner))) {
-            renderBlockDecal(buffer, renderInfo, level, blockpos, x, y, z, u0, u1, v0, v1, particleScale, spriteScale, this.alpha, decalRot, this.rCol, this.gCol, this.bCol, lightColor);
-        }
-
-        for (ParticleComponent component : components) {
-            component.postRender(this, buffer, renderInfo, partialTicks, lightColor);
-        }
-    }
-
-    private static Vec2 rotateVec2(Vec2 v, float angle) {
-        return new Vec2(v.x * (float) Math.cos(angle) - v.y * (float) Math.sin(angle),
-                v.x * (float) Math.sin(angle) + v.y * (float) Math.cos(angle));
-    }
-
-    private static void renderBlockDecal(VertexConsumer buffer, Camera renderInfo, LevelReader level, BlockPos blockPos, double x, double y, double z, float u0, float u1, float v0, float v1, float scale, float spriteScale, float alpha, float rotation, float r, float g, float b, int lightColor) {
-        Vec2 center = new Vec2((float) x, (float) z);
-        BlockPos blockpos = blockPos.below();
-        BlockState blockstate = level.getBlockState(blockpos);
-        if (blockstate.getRenderShape() != RenderShape.INVISIBLE) {
-            if (blockstate.isCollisionShapeFullBlock(level, blockpos)) {
-                VoxelShape voxelshape = blockstate.getShape(level, blockPos.below());
-                if (!voxelshape.isEmpty()) {
-                    float f = alpha;
-                    if (f >= 0.0F) {
-                        if (f > 1.0F) {
-                            f = 1.0F;
-                        }
-
-                        double rad2 = Math.sqrt(2.0);
-                        double minX = x - scale * spriteScale * rad2;
-                        double minZ = z - scale * spriteScale * rad2;
-                        double maxX = x + scale * spriteScale * rad2;
-                        double maxZ = z + scale * spriteScale * rad2;
-                        AABB aabb = voxelshape.bounds();
-                        float d0 = blockPos.getX() + (float) aabb.minX;
-                        float d1 = blockPos.getX() + (float) aabb.maxX;
-                        float d2 = blockPos.getY() + (float) aabb.minY + 0.005625f;
-                        float d3 = blockPos.getZ() + (float) aabb.minZ;
-                        float d4 = blockPos.getZ() + (float) aabb.maxZ;
-                        if (d0 < minX) d0 = (float) minX;
-                        if (d1 > maxX) d1 = (float) maxX;
-                        if (d3 < minZ) d3 = (float) minZ;
-                        if (d4 > maxZ) d4 = (float) maxZ;
-                        Vec2 corners[] = new Vec2[] {
-                                new Vec2(d0, d3),
-                                new Vec2(d1, d3),
-                                new Vec2(d1, d4),
-                                new Vec2(d0, d4),
-                        };
-                        for (Vec2 corner : corners) {
-                            Vec2 cornerRelative = rotateVec2(corner.add(center.negated()), -rotation);
-                            Vec2 uv = new Vec2((cornerRelative.x / (2.0f * scale) + 0.5f) * (u1 - u0) + u0, (cornerRelative.y / (2.0f * scale) + 0.5f) * (v1 - v0) + v0);
-                            decalVertex(buffer, renderInfo, f, corner.x, d2, corner.y, uv.x, uv.y, r, g, b, lightColor);
-                        }
-                    }
-
-                }
-            }
-        }
-    }
-
-    private static void decalVertex(VertexConsumer buffer, Camera renderInfo, float alpha, float x, float y, float z, float u, float v, float r, float g, float b, int lightColor) {
-        Vec3 vector3d = renderInfo.position();
-//        Vector3d = new Vec3(0, 1, 0);
-        buffer.addVertex((float) (x - vector3d.x()), (float) (y - vector3d.y()), (float) (z - vector3d.z())).setUv(u, v).setColor(r, g, b, alpha).setLight(lightColor);
-    }
-
-    // See class-level comment: decal geometry can't be represented by the new single-quad extraction API, so
-    // this intentionally opts out of drawing (NO_RENDER) rather than silently drawing one incorrect quad.
     @Override
-    public ParticleRenderType getGroup() {
-        return ParticleRenderType.NO_RENDER;
+    public void tick() {
+        super.tick();
+        this.setSprite(sprites.get(Math.min(this.age, 5), 5));
+    }
+
+    // The original render() only ever drew the central (spriteSize/bufferSize)-sized crop of the texture (e.g.
+    // strix_footprint.png is a 32x32 canvas with the actual footprint mark drawn in roughly an 8x8 patch at its
+    // center - confirmed by inspecting the PNG's alpha bounding box) at a world half-extent of
+    // particleScale * spriteScale * sqrt(2). extractRotatedQuad() always maps the *whole* sprite (u0..u1/v0..v1,
+    // i.e. the full padded canvas) onto getQuadSize(), not just that inner crop, so to make the visible mark
+    // come out at the same world size as before, the world-units-per-uv-fraction ratio has to be preserved
+    // instead of the crop's absolute size: world_width(crop) / uv_fraction_width(crop) works out to a constant
+    // 2 * particleScale independent of spriteScale (it cancels out - both the crop's world size and its uv
+    // fraction scale by the same spriteScale * sqrt(2) term), so mapping the full uv range (fraction = 1) at
+    // that same ratio gives a half-extent of exactly particleScale, not particleScale * spriteScale * sqrt(2).
+    @Override
+    public float getQuadSize(float partialTicks) {
+        return this.particleScale;
     }
 
     public static class Provider implements ParticleProvider<DecalParticleType> {
@@ -195,7 +87,10 @@ public class ParticleDecal extends AdvancedParticleBase {
     }
 
     public static void spawnDecal(Level world, Holder<ParticleType<?>> particle, double x, double y, double z, double motionX, double motionY, double motionZ, double angle, double scale, double red, double green, double blue, double alpha, double airDrag, double duration, boolean emissive, int spriteSize, int bufferSize, ParticleComponent[] components) {
-        AdvancedParticleType base = new AdvancedParticleType(particle, new ParticleRotation.FaceCamera((float) angle), components, (float) red, (float) green, (float) blue, (float) alpha, (float) scale, (float) duration, (float) airDrag, emissive, false);
+        // yaw = angle (matches the ground-projection "decalRot" the original used this value for), pitch = 90
+        // degrees to lay the normally-vertical billboard quad flat on the ground - see class-level comment.
+        ParticleRotation rotation = new ParticleRotation.EulerAngles((float) angle, (float) (Math.PI / 2.0), 0.0F);
+        AdvancedParticleType base = new AdvancedParticleType(particle, rotation, components, (float) red, (float) green, (float) blue, (float) alpha, (float) scale, (float) duration, (float) airDrag, emissive, false);
         world.addParticle(new DecalParticleType(base, spriteSize, bufferSize), x, y, z, motionX, motionY, motionZ);
     }
 }
