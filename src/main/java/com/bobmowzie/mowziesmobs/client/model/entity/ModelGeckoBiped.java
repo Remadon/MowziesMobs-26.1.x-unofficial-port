@@ -174,6 +174,20 @@ public class ModelGeckoBiped extends MowzieGeoModel<GeckoPlayer> {
 		float armSwingAmountLeft = 1.0f - getMowzieBone("ArmSwingController").getPosZ();
 		this.bipedRightArm().addRotX(armSwingAmount * armSwingAmountRight *Mth.cos(limbSwing * 0.6662F + (float)Math.PI) * 2.0F * limbSwingAmount * 0.5F / f);
 		this.bipedLeftArm().addRotX(armSwingAmount * armSwingAmountLeft * Mth.cos(limbSwing * 0.6662F) * 2.0F * limbSwingAmount * 0.5F / f);
+		// FOLLOW-UP FIX (walk-cycle leg rotation runs away without bound over a play session - confirmed via
+		// debug logging, rotX observed as high as -17 radians): "RightLeg"/"LeftLeg" are never touched anywhere
+		// earlier in this method, and GeckoLib only auto-resets a bone's per-frame snapshot between frames for
+		// bones tracked through its own keyframe/controller pipeline - MowzieGeoBone's addRotX lazily creates an
+		// untracked snapshot the first time it's touched (see MowzieGeoBone#snapshot), which then persists
+		// forever since nothing ever nulls it back out. addRotX below is written to behave like vanilla
+		// ModelBiped#setRotationAngles - an absolute value recomputed fresh each frame - not a true accumulator,
+		// so without this reset it just keeps adding this frame's oscillation on top of every previous frame's,
+		// unbounded, for the life of the render session. This was invisible on the player's own mesh (a
+		// rotation still produces a valid, if arbitrarily-wrapped, matrix via sin/cos either way) but became
+		// obvious once armor pieces further from the hip pivot (e.g. boots) started swinging through the
+		// resulting wide, unstable arc.
+		this.bipedRightLeg().setRotX(0);
+		this.bipedLeftLeg().setRotX(0);
 		this.bipedRightLeg().addRotX(legWalkAmount * Mth.cos(limbSwing * 0.6662F) * 1.4F * limbSwingAmount / f);
 		this.bipedLeftLeg().addRotX(legWalkAmount * Mth.cos(limbSwing * 0.6662F + (float)Math.PI) * 1.4F * limbSwingAmount / f);
 

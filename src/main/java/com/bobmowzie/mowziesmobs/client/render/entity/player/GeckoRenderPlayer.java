@@ -1,8 +1,18 @@
 package com.bobmowzie.mowziesmobs.client.render.entity.player;
 
 import com.bobmowzie.mowziesmobs.client.model.entity.ModelGeckoPlayerThirdPerson;
+import com.bobmowzie.mowziesmobs.client.render.entity.layer.GeckoPlayerArmorLayer;
 import com.bobmowzie.mowziesmobs.client.render.entity.layer.GeckoPlayerItemInHandLayer;
 import com.bobmowzie.mowziesmobs.client.render.entity.layer.SolarFlareLayer;
+import com.bobmowzie.mowziesmobs.server.ability.Ability;
+import com.bobmowzie.mowziesmobs.server.ability.abilities.player.WroughtAxeSlamAbility;
+import com.bobmowzie.mowziesmobs.server.ability.abilities.player.WroughtAxeSwingAbility;
+import com.bobmowzie.mowziesmobs.server.ability.abilities.player.heliomancy.SolarBeamAbility;
+import com.bobmowzie.mowziesmobs.server.ability.abilities.player.heliomancy.SolarFlareAbility;
+import com.bobmowzie.mowziesmobs.server.ability.abilities.player.heliomancy.SunstrikeAbility;
+import com.bobmowzie.mowziesmobs.server.ability.abilities.player.heliomancy.SupernovaAbility;
+import com.bobmowzie.mowziesmobs.server.capability.AbilityData;
+import com.bobmowzie.mowziesmobs.server.capability.DataHandler;
 import com.geckolib.constant.dataticket.DataTicket;
 import com.geckolib.renderer.GeoObjectRenderer;
 import com.geckolib.renderer.base.BoneSnapshots;
@@ -13,6 +23,7 @@ import com.mojang.math.Axis;
 import net.minecraft.client.model.HumanoidModel;
 import net.minecraft.client.player.AbstractClientPlayer;
 import net.minecraft.client.renderer.SubmitNodeCollector;
+import net.minecraft.client.renderer.entity.EntityRendererProvider;
 import net.minecraft.client.renderer.entity.player.AvatarRenderer;
 import net.minecraft.client.renderer.state.level.CameraRenderState;
 import net.minecraft.util.Mth;
@@ -137,10 +148,12 @@ public class GeckoRenderPlayer extends GeoObjectRenderer<GeckoPlayer, Void, GeoR
 
     private final GeckoPlayerItemInHandLayer itemInHandLayer = new GeckoPlayerItemInHandLayer(this);
     private final SolarFlareLayer solarFlareLayer = new SolarFlareLayer(this);
+    private final GeckoPlayerArmorLayer armorLayer;
 
-    public GeckoRenderPlayer(ModelGeckoPlayerThirdPerson geoModel) {
+    public GeckoRenderPlayer(ModelGeckoPlayerThirdPerson geoModel, EntityRendererProvider.Context context) {
         super(geoModel);
         this.geoModel = geoModel;
+        this.armorLayer = new GeckoPlayerArmorLayer(context.getModelSet(), context.getEquipmentAssets());
     }
 
     public ModelGeckoPlayerThirdPerson getGeckoModel() {
@@ -205,6 +218,131 @@ public class GeckoRenderPlayer extends GeoObjectRenderer<GeckoPlayer, Void, GeoR
         geoModel.rightArmPose = rightPose;
         geoModel.isSneak = player.isCrouching();
 
+        // FOLLOW-UP FIX (axe swing/slam: body scatters into the far distance, screenshot-confirmed): same root
+        // cause as the Umvuthana bone-reset bug fixed earlier - ModelGeckoBiped#setRotationAngles unconditionally
+        // does addRotX/addRotY on "Head" every frame (the procedural head-look-at-aim-direction layer), but
+        // animated_player.animation.json's axe_swing_start_right/left and axe_swing_vertical clips (the ones
+        // WroughtAxeSwingAbility/WroughtAxeSlamAbility play) have no keyframe track for "Head" at all - so nothing
+        // ever refreshes its snapshot while those clips are active, and the additive head-look offset compounds
+        // every single render frame (not just every tick) for the ability's whole duration, same class of bug as
+        // Umvuthana's walk clips. Resetting Head before the additive math runs fixes it, mirroring
+        // RenderUmvuthana#adjustModelBonesForRender's per-clip bone resets. NOTE: idle, ice_breath_*, sunstrike,
+        // tunneling_*, hit_boulder, backstab_*, and solar_flare also have no "Head" track and likely have this same
+        // latent bug - not reset here since only the axe was reported broken; if any of those abilities are
+        // reported with the same "player scatters" symptom, add them to this check.
+        //
+        // FOLLOW-UP FIX 2 (one arm flails, the other extends to the side and slowly spins): same class of bug
+        // again, but for the "controller" bones ModelGeckoBiped reads as molang-style parameters rather than the
+        // mesh bones themselves. ArmPitchController/LegWalkController/ArmBreathController are ALSO missing from
+        // the axe clips' bone lists (only ArmSwingController/CrouchController/SwimController are covered), so
+        // armLookAmount/legWalkAmount/armBreathAmount are left holding whatever stale value they last had from
+        // before the ability started (e.g. idle), instead of reading 0 for a clip that wants full manual control
+        // of the arm/leg pose. armLookAmount in particular gets multiplied by netHeadYaw/headPitch and added onto
+        // LeftClavicle/RightClavicle on top of the swing clip's own keyframed rotation - since those change as the
+        // camera moves, a stale non-zero armLookAmount reads as an arm slowly rotating/tracking the camera
+        // independently of the swing itself, matching the reported symptom. RightClavicle/LeftClavicle/RightArm/
+        // LeftArm themselves are NOT reset here (unlike Head) since the axe clips DO keyframe those directly -
+        // resetting the mesh bones would discard the intended swing pose; resetting only the controller bones
+        // zeroes out just the stale additive contribution while leaving the keyframed pose intact.
+        // FOLLOW-UP FIX 3 (slam only: whole player renders far away, screenshot-confirmed): a slam is only ever
+        // triggered by shift-right-clicking (see ItemWroughtAxe#use's verticalAttack check), and holding shift
+        // means isSneak is true for the entire ability - which turns on ModelGeckoBiped#setRotationAngles's
+        // isSneak block, an UNCONDITIONAL addPos/addPosY on Body/Waist/LeftArm/RightArm every frame (crouch
+        // posture offset). axe_swing_vertical (slam) has a "rotation" track but no "position" track for any of
+        // those four bones, so - same bug family yet again - nothing ever refreshes their position snapshot while
+        // it plays, and the crouch offset compounds every render frame for the whole slam. axe_swing_start_right/
+        // left (swing) have the identical gap for Body/LeftArm/RightArm (Waist happens to have its own position
+        // track there, so it's excluded below to avoid discarding that), but swinging can't normally trigger
+        // isSneak=true in the first place (it's the non-shift branch) - reset unconditionally anyway since a
+        // position-only reset is harmless even when isSneak never fires, and it costs nothing to also cover the
+        // ability being renamed/re-triggered from an unexpected state. Only position is touched (not the whole
+        // bone via resetBoneToSnapshot, unlike Head above) since Body/LeftArm/RightArm's ROTATION genuinely is
+        // keyframed by the swing/slam clips and must survive.
+        // FOLLOW-UP FIX (Sun's Blessing abilities: Sunstrike/Solar Flare made the whole player disappear, Solar
+        // Beam's arms flailed, Supernova flipped the player up then made them disappear): the exact bug class
+        // documented above and anticipated in this method's own earlier comment ("idle, ice_breath_*, sunstrike,
+        // tunneling_*, hit_boulder, backstab_*, and solar_flare also have no Head track and likely have this same
+        // latent bug"), now confirmed live for these 4 abilities and fixed the same way - reset each bone/channel
+        // that a given clip does NOT keyframe, so ModelGeckoBiped's unconditional additive math (head-look,
+        // arm-pitch/leg-walk/arm-breath controllers, and - critically for Supernova, which can only be triggered
+        // while sneaking - the isSneak block's addRotX/addPos on Body/Waist) has nothing stale to compound onto.
+        // Checked each clip's actual bone/channel coverage directly against animated_player.animation.json rather
+        // than guessing, since resetting a bone a clip DOES keyframe would discard that clip's own intended pose -
+        // exactly the mistake the original axe fix's own comments warn against for RightArm/LeftArm/Waist there.
+        // Per-clip coverage gaps found (bones/channels present are safe to leave alone):
+        //   sunstrike (0.92s):          Body/LeftArm/RightArm have rotation only (no position); Head, Waist,
+        //                               LegWalkController, ArmBreathController have no track at all.
+        //   solar_beam_charge (5.36s):  LegWalkController, ArmBreathController have no track at all. Everything
+        //                               else (Head, ArmPitchController, Body's rotation, Waist/LeftArm/RightArm's
+        //                               rotation+position) is fully covered.
+        //   solar_flare (1.4s):         Body has rotation only (no position); Head, ArmPitchController, Waist,
+        //                               LegWalkController, ArmBreathController have no track at all.
+        //   supernova (5.76s):          Body and Waist have no track at all (rotation OR position); ArmPitchController,
+        //                               ArmBreathController have no track at all.
+        AbilityData abilityData = DataHandler.getData(player, DataHandler.ABILITY_DATA);
+        Ability<?> activeAbility = abilityData.getActiveAbility();
+        boolean isAxeSwingOrSlam = activeAbility instanceof WroughtAxeSwingAbility || activeAbility instanceof WroughtAxeSlamAbility;
+        boolean isSunstrike = activeAbility instanceof SunstrikeAbility;
+        boolean isSolarBeam = activeAbility instanceof SolarBeamAbility;
+        boolean isSolarFlare = activeAbility instanceof SolarFlareAbility;
+        boolean isSupernova = activeAbility instanceof SupernovaAbility;
+
+        if (isAxeSwingOrSlam || isSunstrike || isSolarFlare) {
+            geoModel.resetBoneToSnapshot(geoModel.getMowzieBone("Head"));
+        }
+        if (isAxeSwingOrSlam || isSolarFlare || isSupernova) {
+            geoModel.resetBoneToSnapshot(geoModel.getMowzieBone("ArmPitchController"));
+        }
+        if (isAxeSwingOrSlam || isSunstrike || isSolarBeam || isSolarFlare) {
+            geoModel.resetBoneToSnapshot(geoModel.getMowzieBone("LegWalkController"));
+        }
+        if (isAxeSwingOrSlam || isSunstrike || isSolarBeam || isSolarFlare || isSupernova) {
+            geoModel.resetBoneToSnapshot(geoModel.getMowzieBone("ArmBreathController"));
+        }
+        if (isAxeSwingOrSlam || isSunstrike || isSolarBeam || isSolarFlare) {
+            geoModel.getMowzieBone("Body").setPos(0, 0, 0);
+        }
+        if (isSupernova) {
+            // supernova's clip has no "Body" track at all (rotation included, unlike the other abilities above) -
+            // and since Supernova can only be triggered while sneaking, isSneak's addRotX on Body would otherwise
+            // compound unchecked for the whole ~5.76s duration too, not just its addPos.
+            geoModel.resetBoneToSnapshot(geoModel.getMowzieBone("Body"));
+        }
+        if (isAxeSwingOrSlam || isSunstrike) {
+            geoModel.getMowzieBone("LeftArm").setPos(0, 0, 0);
+            geoModel.getMowzieBone("RightArm").setPos(0, 0, 0);
+        }
+        if (activeAbility instanceof WroughtAxeSlamAbility || isSunstrike || isSolarFlare || isSupernova) {
+            geoModel.getMowzieBone("Waist").setPos(0, 0, 0);
+        }
+        // FOLLOW-UP FIX (Sunstrike/Solar Beam/Solar Flare: reported arm "flailing"/"waving wildly" persisted even
+        // after the resets above): the arms themselves DO have correct, non-stale keyframed rotation in all three
+        // clips (confirmed against animated_player.animation.json) - the missing piece was their PARENT bones,
+        // "LeftClavicle"/"RightClavicle", which are absent from all three clips' bone lists. setRotationAngles's
+        // head-look layer unconditionally does addRotX/addRotY on both clavicles based on the live camera's
+        // netHeadYaw/headPitch (see the top of this method), and since nothing ever refreshes their snapshot while
+        // these clips play, that camera-tracking rotation compounds every render frame on the bone the whole arm
+        // is parented to - so even though the arm's OWN local rotation is correct, the compounding clavicle
+        // rotation swings the entire arm (clavicle + arm together) around unpredictably as the camera moves,
+        // which is exactly what "flailing"/"waving around" describes. axe and supernova's clips both keyframe
+        // both clavicles directly and are unaffected.
+        if (isSunstrike || isSolarBeam || isSolarFlare) {
+            geoModel.resetBoneToSnapshot(geoModel.getMowzieBone("LeftClavicle"));
+            geoModel.resetBoneToSnapshot(geoModel.getMowzieBone("RightClavicle"));
+        }
+        // FOLLOW-UP FIX (Supernova: head tilts to a full straight-up or straight-down extreme, screenshot-confirmed
+        // - visible as the neck bending backward hard while the supernova charges): same bug family as the Waist/
+        // Body position drift already handled above for Supernova, but on "Neck" specifically - it has no track at
+        // all in supernova's clip, and since Supernova can only be triggered while sneaking, isSneak's
+        // Neck.addRotX(0.5F * sneakController) runs unconditionally every frame with nothing to reset it, so the
+        // tilt compounds for the whole ~5.76s duration. solar_flare's clip also has no "Neck" track and can
+        // likewise only be triggered while sneaking (shift+left-click), so it gets the same fix pre-emptively
+        // rather than waiting for a separate bug report - sunstrike/solar_beam_charge/axe all keyframe Neck
+        // directly and are unaffected.
+        if (isSolarFlare || isSupernova) {
+            geoModel.resetBoneToSnapshot(geoModel.getMowzieBone("Neck"));
+        }
+
         geoModel.setRotationAngles(player, limbSwing, limbSwingAmount, ageInTicks, netHeadYaw, headPitch, partialTick);
     }
 
@@ -234,6 +372,11 @@ public class GeckoRenderPlayer extends GeoObjectRenderer<GeckoPlayer, Void, GeoR
         if (player != null) {
             itemInHandLayer.registerListeners(renderPassInfo, renderTasks, player);
             solarFlareLayer.registerListener(renderPassInfo, renderTasks, player);
+            // FOLLOW-UP FIX (armor invisible during abilities, documented as intentionally dropped above): render
+            // equipped vanilla armor per-bone via the same bone-position-listener technique itemInHandLayer already
+            // uses - see GeckoPlayerArmorLayer's own javadoc for why this sidesteps the "no live bone world
+            // transform outside GeckoLib's own render pass" wall instead of fighting it.
+            armorLayer.registerListeners(renderPassInfo, renderTasks, player);
         }
     }
 

@@ -17,8 +17,11 @@
       }
     ],
     "fallback": {
-      "type": "minecraft:model",
-      "model": "mowziesmobs:item/earthrend_gauntlet_in_hand"
+      "type": "minecraft:special",
+      "base": "mowziesmobs:item/earthrend_gauntlet",
+      "model": {
+        "type": "geckolib:geckolib"
+      }
     }
   }
 }

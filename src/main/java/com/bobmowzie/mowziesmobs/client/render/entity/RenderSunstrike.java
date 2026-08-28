@@ -101,7 +101,6 @@ public class RenderSunstrike extends EntityRenderer<EntitySunstrike, RenderSunst
             super.submit(state, poseStack, renderTasks, cameraState);
             return;
         }
-        RANDOMIZER.setSeed(sunstrike.getVariant());
         boolean isLingering = sunstrike.isLingering(delta);
         boolean isStriking = sunstrike.isStriking(delta);
         int packedLight = state.lightCoords;
@@ -118,7 +117,22 @@ public class RenderSunstrike extends EntityRenderer<EntitySunstrike, RenderSunst
         super.submit(state, poseStack, renderTasks, cameraState);
     }
 
+    // FOLLOW-UP FIX (scorch mark visibly "spinning"/flickering with more than ~2 Sunstrikes lingering at once):
+    // RANDOMIZER.setSeed(sunstrike.getVariant()) used to be called synchronously in submit() - the submit phase -
+    // while the RANDOMIZER.nextFloat()/nextBoolean() calls that actually consume it (opacityMultiplier, mirrorX,
+    // mirrorZ below) only run later, inside this method, deferred via submitCustomGeometry's callback (the draw
+    // phase). RANDOMIZER is a single shared static field: with only one lingering Sunstrike that timing gap didn't
+    // matter (only one submit() call, always immediately followed - eventually - by only one drawScorch() call
+    // sharing the same seed), but with multiple entities lingering simultaneously, ALL of their submit() calls
+    // (each re-seeding the SAME shared RANDOMIZER to their own variant) run to completion before ANY of their
+    // deferred drawScorch() callbacks do - so by draw time the seed is whatever the last entity's submit() left
+    // it at, and each entity's random draws consume further into that same shared sequence rather than its own -
+    // producing different, frame-to-frame-unstable mirrorX/mirrorZ/opacity values per scorch mark, which reads as
+    // flickering/spinning. Moving the seed reset to right here, immediately before it's consumed, keeps each
+    // entity's random draws self-contained and deterministic regardless of how many other entities are rendering
+    // or what order their callbacks run in.
     private void drawScorch(EntitySunstrike sunstrike, float delta, PoseStack.Pose parentPose, VertexConsumer builder, int packedLightIn) {
+        RANDOMIZER.setSeed(sunstrike.getVariant());
         Level world = sunstrike.level();
         double ex = sunstrike.xOld + (sunstrike.getX() - sunstrike.xOld) * delta;
         double ey = sunstrike.yOld + (sunstrike.getY() - sunstrike.yOld) * delta;
