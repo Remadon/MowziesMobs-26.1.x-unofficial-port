@@ -7,6 +7,7 @@ import com.geckolib.animation.RawAnimation;
 import com.geckolib.cache.animation.Animation;
 import com.geckolib.model.GeoModel;
 import com.geckolib.renderer.base.GeoRenderState;
+import com.geckolib.util.ClientUtil;
 import org.jetbrains.annotations.TestOnly;
 
 /**
@@ -53,6 +54,23 @@ public class MowzieAnimationController<T extends GeoAnimatable> extends Animatio
     public void playAnimation(T animatable, GeoRenderState renderState, AnimatableManager<T> manager, GeoModel<T> geoModel, RawAnimation animation) {
         reset();
         setAnimation(animation);
+        // FOLLOW-UP FIX (confirmed live via debug logging: a freshly-started animation's timeline was observed
+        // jumping straight to its own end - e.g. timelineTime landing on a 1.64s clip's exact 1.64 total length -
+        // on the very first real tick after this force-init, meaning the whole clip played for zero visible
+        // frames): AnimationController#checkControllerState advances the timeline each call by
+        // (currentAge - lastAnimatableAge), clamped to the clip's length - and lastAnimatableAge is a controller
+        // field that's only ever refreshed *inside* checkControllerState itself, once per call. This player's
+        // third-person controller only receives checkControllerState calls while GeckoRenderPlayer is actively
+        // driving the pose, which (see ClientEventHandler's RenderPlayerEvent.Pre gating) is only while an ability
+        // is active - vanilla rendering (and therefore no controller ticking at all) resumes the rest of the time.
+        // So lastAnimatableAge sits frozen at whatever tick the previous ability last rendered a frame at, however
+        // long ago that was; the next time any ability starts and this force-init runs, the immediately-following
+        // real checkControllerState call computes (now - that stale, possibly many-seconds-old value) as its
+        // delta - almost always larger than the whole clip - and the timeline clamp instantly jumps to the end.
+        // Resyncing lastAnimatableAge to "now" here means that first real call instead measures only the true
+        // elapsed time since this force-init (at most a few milliseconds), which is what lets the clip actually
+        // play through its keyframes instead of skipping straight to its final pose.
+        this.lastAnimatableAge = ClientUtil.getCurrentTick();
         initializeNewAnimation(animatable, renderState, geoModel, getAnimationSpeed(), getTransitionTicks());
     }
 

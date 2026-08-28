@@ -36,7 +36,7 @@ public class ClientLayerRegistry {
             }
         }
 
-        GeckoPlayer.GeckoPlayerThirdPerson.initRenderer();
+        GeckoPlayer.GeckoPlayerThirdPerson.initRenderer(event.getContext());
     }
 
     private static void addLayerIfApplicable(EntityType<? extends LivingEntity> entityType, EntityRenderersEvent.AddLayers event) {

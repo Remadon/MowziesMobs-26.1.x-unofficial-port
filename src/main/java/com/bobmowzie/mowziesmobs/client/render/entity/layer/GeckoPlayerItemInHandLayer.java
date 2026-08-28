@@ -7,6 +7,7 @@ import com.bobmowzie.mowziesmobs.server.capability.AbilityData;
 import com.bobmowzie.mowziesmobs.server.capability.DataHandler;
 import com.geckolib.renderer.base.GeoRenderState;
 import com.geckolib.renderer.base.RenderPassInfo;
+import com.geckolib.util.RenderUtil;
 import com.mojang.blaze3d.vertex.PoseStack;
 import com.mojang.math.Axis;
 import net.minecraft.client.Minecraft;
@@ -18,42 +19,31 @@ import net.minecraft.world.item.ItemDisplayContext;
 import net.minecraft.world.item.ItemStack;
 
 /**
- * PORTING NOTE (26.1.2) - see the coordinator's brief and PORTING_NOTES.md's "GeckoPlayerItemInHandLayer.java /
- * SolarFlareLayer.java - confirmed cross-scope gap" section: this class hit the SAME root architectural wall as
- * {@code GeckoCapeLayer}/{@code GeckoElytraLayer}/{@code GeckoParrotOnShoulderLayer} in this package (the
- * redesigned {@code GeckoRenderPlayer} is no longer a {@code RenderLayerParent} and has no {@code addLayer}/{@code
- * layers} mechanism at all - see {@code GeckoCapeLayer}'s javadoc), PLUS a second, independent blocker specific to
- * this file: it called {@code MowzieGeoBone#getWorldSpaceMatrix()}/{@code #getWorldSpaceNormal()}, which were
- * dropped entirely with no replacement (see PORTING_NOTES.md "MowzieGeoBone is now a WRAPPER" section - GeckoLib 5
- * does not expose a bone's world transform outside of its own live render traversal at all any more).
+ * Renders the player's held item (main and off hand) attached to the "RightHeldItem"/"LeftHeldItem" bones while a
+ * GeckoLib ability animation is driving the body pose - {@code GeckoRenderPlayer#preRenderPass} calls
+ * {@link #registerListeners} every frame.
  * <p>
- * Rather than inventing a new integration point on {@code GeckoRenderPlayer.java} itself (out of this agent's file
- * scope, and that file is a finished, dedicated-agent-owned redesign - reaching into it here would risk conflicting
- * with that design), this class is rewritten as a standalone helper using the EXACT bone-transform-recovery
- * technique {@code GeckoRenderPlayer}/{@code GeckoFirstPersonRenderer} themselves already established and documented
- * for this identical problem (recovering a bone's full world rotation despite {@code addBonePositionListener} being
- * position-only, by reading the live {@code PoseStack} from inside the listener callback while it is pushed to that
- * bone's transform - see {@code GeckoRenderPlayer}'s class javadoc, "Attachment points (held item / particle root)
- * recover full rotation" section, and {@code GeckoFirstPersonRenderer#registerHandListener} for a directly parallel
- * worked example rendering an item at a bone-attached hand). This is deliberately NOT a guess at a new design - it
- * reuses the other agent's own sanctioned, already-working mechanism verbatim.
+ * The bone transform is reconstructed via {@code RenderUtil#transformToBone} (see {@code GeckoPlayerArmorLayer}'s
+ * class javadoc for the full derivation of why this reproduces a bone's live world transform without needing
+ * GeckoLib's own render traversal) rather than {@code RenderPassInfo#addBonePositionListener}, which an earlier
+ * version of this class used: that callback fires from inside the draw-phase iteration over
+ * {@code CustomFeatureRenderer.Storage.solidCustomGeometrySubmits} (again, see {@code GeckoPlayerArmorLayer} for the
+ * full decompiled-source trace of why), and {@code itemInHandRenderer.renderItem} internally calls
+ * {@code SubmitNodeCollector#submitModel}/{@code submitBlockModel}/{@code submitCustomGeometry} depending on the
+ * item's render type - calling any of those from inside that draw-phase callback mutates the same collection
+ * that's mid-iteration. For armor (a plain HashMap) that threw a {@code ConcurrentModificationException}; here it
+ * evidently landed on a storage type that silently drops the add instead of throwing, so the held item just never
+ * drew, with no error logged - reproduced live as "the axe disappears the instant the swing animation starts".
+ * Fixed by looking the bone up directly and calling {@code RenderPassInfo#renderPosed} synchronously here, during
+ * the submit phase, before any draw-phase iteration has begun - see {@code GeckoPlayerArmorLayer#renderBone} for
+ * the sibling implementation of the same pattern.
  * <p>
- * <b>Wiring (cross-scope, NOT done here, matching this codebase's established "flag it, don't reach outside scope"
- * convention for exactly this situation)</b>: nothing currently calls {@link #registerListeners}. It needs to be
- * invoked once per frame from inside {@code GeckoRenderPlayer#preRenderPass(RenderPassInfo, SubmitNodeCollector)}
- * (the same place {@code registerAttachmentListener} is called for "LeftHeldItem"/"RightHeldItem"/
- * "ParticleEmitterRoot" today), passing that call's own {@code renderPassInfo}/{@code renderTasks} plus the live
- * player. That one-line addition is a change to {@code GeckoRenderPlayer.java}, which is out of this agent's 10-file
- * scope - flagged here rather than made, per the coordinator's explicit instruction not to guess at a design that
- * conflicts with the player-render agent's finished file. Until that wiring exists, this class is inert (constructed
- * by nobody, its listeners never registered) but fully implemented and ready to be called.
- * <p>
- * <b>Small behavioral note</b>: the old body also had a {@code this.getParentModel().young} check that scaled the
- * held item/arm down 0.5x and offset it, presumably for a shrunk/baby player state. There is no {@code
- * getParentModel()} any more (no {@code RenderLayerParent} - see above), and grepping for what could set a real
- * player's {@code PlayerModel.young} to true in this mod turned up nothing live - this appears to have been
+ * <b>Behavioral note</b>: the old (pre-port) body also had a {@code this.getParentModel().young} check that scaled
+ * the held item/arm down 0.5x and offset it, presumably for a shrunk/baby player state. There is no
+ * {@code getParentModel()} any more (no {@code RenderLayerParent} in this redesign), and grepping for what could set
+ * a real player's {@code PlayerModel.young} to true in this mod turned up nothing live - this appears to have been
  * boilerplate copied from a generic mob item-in-hand layer template rather than a reachable path for a player. Not
- * reproduced; flagged here rather than silently carried forward as an unreachable dead branch.
+ * reproduced.
  */
 public class GeckoPlayerItemInHandLayer {
     private final GeckoRenderPlayer renderPlayerAnimated;
@@ -63,34 +53,51 @@ public class GeckoPlayerItemInHandLayer {
     }
 
     /**
-     * Registers the bone-position listeners that render the held-item/arm geometry at the "RightHeldItem"/
-     * "LeftHeldItem" bones for one frame. See class javadoc for the intended (cross-scope) call site.
+     * Renders the held-item geometry at the "RightHeldItem"/"LeftHeldItem" bones for this frame. Called from
+     * {@code GeckoRenderPlayer#preRenderPass}.
      */
     public void registerListeners(RenderPassInfo<GeoRenderState> renderPassInfo, SubmitNodeCollector renderTasks, AbstractClientPlayer player) {
         registerHandListener(renderPassInfo, renderTasks, player, "RightHeldItem", HumanoidArm.RIGHT, ItemDisplayContext.THIRD_PERSON_RIGHT_HAND);
         registerHandListener(renderPassInfo, renderTasks, player, "LeftHeldItem", HumanoidArm.LEFT, ItemDisplayContext.THIRD_PERSON_LEFT_HAND);
     }
 
+    // FOLLOW-UP FIX (axe/held item silently stopped rendering the instant an ability's animation started): this
+    // used to look up the bone's transform via RenderPassInfo#addBonePositionListener, whose callback - per the
+    // same investigation documented on GeckoPlayerArmorLayer's class javadoc (see that file for the full
+    // decompiled-source trace) - fires from *inside* the draw-phase iteration over
+    // CustomFeatureRenderer.Storage.solidCustomGeometrySubmits, not the submit phase. itemInHandRenderer.renderItem
+    // internally calls SubmitNodeCollector#submitModel/submitBlockModel/submitCustomGeometry depending on the
+    // item's render type, so calling it from in there mutates the same collection structure that's mid-iteration -
+    // for armor (a plain HashMap) that threw a ConcurrentModificationException; here it evidently lands on a
+    // storage type that swallows the add instead of throwing, so the item just never draws, with no error logged.
+    // Fixed the same way as the armor layer: look the bone up directly and call RenderPassInfo#renderPosed
+    // synchronously from here (during preRenderPass, i.e. the submit phase, before any draw-phase iteration has
+    // begun), then reconstruct the bone's transform via RenderUtil#transformToBone instead of relying on the live
+    // listener firing mid-traversal - see GeckoPlayerArmorLayer's renderBone for the sibling implementation of the
+    // exact same pattern.
     private void registerHandListener(RenderPassInfo<GeoRenderState> renderPassInfo, SubmitNodeCollector renderTasks, AbstractClientPlayer player, String boneName, HumanoidArm boneSide, ItemDisplayContext transformType) {
-        renderPassInfo.addBonePositionListener(boneName, (worldPos, modelPos, localPos) -> {
-            if (!renderPlayerAnimated.getAnimatedPlayerModel().isInitialized()) return;
+        if (!renderPlayerAnimated.getAnimatedPlayerModel().isInitialized()) return;
 
-            ItemStack mainHandStack = player.getMainHandItem();
-            ItemStack offHandStack = player.getOffhandItem();
-            AbilityData abilityData = DataHandler.getData(player, DataHandler.ABILITY_DATA);
-            if (abilityData != null && abilityData.getActiveAbility() != null) {
-                Ability<?> ability = abilityData.getActiveAbility();
-                if (ability instanceof PlayerAbility playerAbility) {
-                    mainHandStack = playerAbility.heldItemMainHandOverride() != null ? playerAbility.heldItemMainHandOverride() : mainHandStack;
-                    offHandStack = playerAbility.heldItemOffHandOverride() != null ? playerAbility.heldItemOffHandOverride() : offHandStack;
-                }
+        ItemStack mainHandStack = player.getMainHandItem();
+        ItemStack offHandStack = player.getOffhandItem();
+        AbilityData abilityData = DataHandler.getData(player, DataHandler.ABILITY_DATA);
+        if (abilityData != null && abilityData.getActiveAbility() != null) {
+            Ability<?> ability = abilityData.getActiveAbility();
+            if (ability instanceof PlayerAbility playerAbility) {
+                mainHandStack = playerAbility.heldItemMainHandOverride() != null ? playerAbility.heldItemMainHandOverride() : mainHandStack;
+                offHandStack = playerAbility.heldItemOffHandOverride() != null ? playerAbility.heldItemOffHandOverride() : offHandStack;
             }
+        }
 
-            boolean isMainHandBone = boneSide == player.getMainArm();
-            ItemStack stack = isMainHandBone ? mainHandStack : offHandStack;
-            if (stack.isEmpty()) return;
+        boolean isMainHandBone = boneSide == player.getMainArm();
+        ItemStack stack = isMainHandBone ? mainHandStack : offHandStack;
+        if (stack.isEmpty()) return;
 
-            PoseStack.Pose bonePose = renderPassInfo.poseStack().last();
+        renderPassInfo.model().getBone(boneName).ifPresent(bone -> renderPassInfo.renderPosed(() -> {
+            PoseStack poseStack = renderPassInfo.poseStack();
+            poseStack.pushPose();
+            RenderUtil.transformToBone(poseStack, bone);
+            PoseStack.Pose bonePose = poseStack.last();
             PoseStack newMatrixStack = new PoseStack();
             newMatrixStack.last().normal().mul(bonePose.normal());
             newMatrixStack.last().pose().mul(bonePose.pose());
@@ -98,6 +105,7 @@ public class GeckoPlayerItemInHandLayer {
 
             ItemInHandRenderer itemInHandRenderer = Minecraft.getInstance().getEntityRenderDispatcher().getItemInHandRenderer();
             itemInHandRenderer.renderItem(player, stack, transformType, newMatrixStack, renderTasks, renderPassInfo.packedLight());
-        });
+            poseStack.popPose();
+        }));
     }
 }

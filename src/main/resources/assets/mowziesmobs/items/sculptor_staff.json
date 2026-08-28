@@ -17,8 +17,11 @@
       }
     ],
     "fallback": {
-      "type": "minecraft:model",
-      "model": "mowziesmobs:item/sculptor_staff_in_hand"
+      "type": "minecraft:special",
+      "base": "mowziesmobs:item/sculptor_staff",
+      "model": {
+        "type": "geckolib:geckolib"
+      }
     }
   }
 }

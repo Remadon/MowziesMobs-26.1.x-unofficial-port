@@ -257,21 +257,25 @@ public abstract class GeckoPlayer implements GeoEntity {
 		 * PORTING NOTE: previously built a manual {@code EntityRendererProvider.Context} to pass to
 		 * {@code GeckoRenderPlayer}'s (then vanilla-{@code PlayerRenderer}-extending) constructor. Neither
 		 * {@code GeckoRenderPlayer} nor {@code GeckoFirstPersonRenderer} extend a vanilla renderer class any more
-		 * (see {@code GeckoRenderPlayer}'s class javadoc for why - they're plain {@code GeoObjectRenderer}s now),
-		 * so no {@code Context} is needed here at all.
+		 * (see {@code GeckoRenderPlayer}'s class javadoc for why - they're plain {@code GeoObjectRenderer}s now).
+		 * <p>
+		 * FOLLOW-UP FIX: a real {@code Context} is needed again after all, specifically for
+		 * {@code GeckoPlayerArmorLayer} (see {@code GeckoRenderPlayer}'s constructor) to bake its own player armor
+		 * models and resolve equipment textures - {@code ClientLayerRegistry#onAddLayers} now passes through the
+		 * one {@code EntityRenderersEvent.AddLayers} already hands it, rather than constructing one by hand.
 		 */
-		public static void initRenderer() {
+		public static void initRenderer(net.minecraft.client.renderer.entity.EntityRendererProvider.Context context) {
 			GECKO_MODEL_THIRD_PERSON_NORMAL = new ModelGeckoPlayerThirdPerson();
 			GECKO_MODEL_THIRD_PERSON_SLIM = new ModelGeckoPlayerThirdPerson();
 			GECKO_MODEL_THIRD_PERSON_SLIM.setUseSmallArms(true);
 
-			GeckoRenderPlayer geckoRenderer = new GeckoRenderPlayer(GECKO_MODEL_THIRD_PERSON_NORMAL);
+			GeckoRenderPlayer geckoRenderer = new GeckoRenderPlayer(GECKO_MODEL_THIRD_PERSON_NORMAL, context);
 			if (!geckoRenderer.getModelsToLoad().containsKey(GeckoPlayer.GeckoPlayerThirdPerson.class)) {
 				geckoRenderer.getModelsToLoad().put(GeckoPlayer.GeckoPlayerThirdPerson.class, geckoRenderer);
 			}
 			GECKO_RENDERER_THIRD_PERSON_NORMAL = geckoRenderer;
 
-			GeckoRenderPlayer geckoRendererSlim = new GeckoRenderPlayer(GECKO_MODEL_THIRD_PERSON_SLIM);
+			GeckoRenderPlayer geckoRendererSlim = new GeckoRenderPlayer(GECKO_MODEL_THIRD_PERSON_SLIM, context);
 			if (!geckoRendererSlim.getModelsToLoad().containsKey(GeckoPlayer.GeckoPlayerThirdPerson.class)) {
 				geckoRendererSlim.getModelsToLoad().put(GeckoPlayer.GeckoPlayerThirdPerson.class, geckoRendererSlim);
 			}

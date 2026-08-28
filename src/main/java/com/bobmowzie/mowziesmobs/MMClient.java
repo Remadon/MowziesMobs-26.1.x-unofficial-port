@@ -17,8 +17,6 @@ import net.neoforged.neoforge.common.NeoForge;
 @Mod(value = MMCommon.MODID, dist = Dist.CLIENT)
 public class MMClient {
     public MMClient(IEventBus modBus, ModContainer container) {
-        // MMModels.class registration removed - it no longer has any @SubscribeEvent methods (see FIXME in
-        // client/MMModels.java: its old model-swapping technique has no equivalent in 26.1.2's item model API).
         modBus.addListener(ClientLayerRegistry::onAddLayers);
         modBus.addListener(this::init);
         modBus.addListener(this::registerClientExtensions);
