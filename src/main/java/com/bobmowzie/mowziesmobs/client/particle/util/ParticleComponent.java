@@ -625,4 +625,16 @@ public abstract class ParticleComponent {
             particle.screenZ = this.z.evaluate(ageFrac);
         }
     }
+
+    // PORTING ADDITION (26.1.2 has no 1.21.1 equivalent - see MMRenderType.PARTICLE_LAYER_TRANSLUCENT_DEPTH_WRITE's
+    // comment for the full explanation): opts a specific particle instance into a render layer that writes real
+    // depth, so 26.1.2's separate-render-target compositor can correctly sort it against the background instead
+    // of treating it as if it had no depth at all. Only needed for particles designed to grow larger than the
+    // camera's distance from them; every other particle keeps using the default no-depth-write layer.
+    public static class UseDepthWritingLayer extends ParticleComponent {
+        @Override
+        public void init(AdvancedParticleBase particle) {
+            particle.layer = com.bobmowzie.mowziesmobs.client.render.MMRenderType.PARTICLE_LAYER_TRANSLUCENT_DEPTH_WRITE;
+        }
+    }
 }

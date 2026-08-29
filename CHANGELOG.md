@@ -12,6 +12,8 @@ All notable changes to this fork's NeoForge 26.1.2 / GeckoLib 5 port are documen
 - The player's legs/boots could visually detach after extended play sessions due to unbounded rotation accumulating in the walk-cycle animation.
 - Scorch marks left by Sunstrike would flicker and appear to spin when more than two were on the ground at once.
 - Spawn egg items for several mobs rendered as blank/missing icons.
+- The Elokosa Paw ability's glow/burst/ring particles never faded out — they stayed at full opacity for their entire lifetime instead of fading over time, making the effect look like a solid opaque blob rather than a translucent glow.
+- The Elokosa Paw ability's outward-extending runic ring was invisible from most camera angles (including the top-down view needed to see it clearly), due to backface culling on its non-billboarded flat quad.
 
 ### Removed
 - The old runtime item-model-swapping system (`MMModels`) used for hand-held item models and mask/visage "frame" overlays, which had no equivalent API in NeoForge 26.1.2. Replaced with plain data-driven item model JSON.

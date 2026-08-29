@@ -53,15 +53,18 @@ public class ItemElokosaPaw extends Item {
             AdvancedParticleBase.spawnParticle(level, ParticleHandler.BURST_MESSY, player.getX(), player.getY() + player.getBbHeight()/2f, player.getZ(), 0, 0, 0, false, 0, Math.PI/2f, 0, 0, 5F, 0.70,0.55,0.99, 1, 1, 20, true, false, new ParticleComponent[]{
                     new ParticleComponent.PropertyControl(ParticleComponent.PropertyControl.EnumParticleProperty.SCALE, new ParticleComponent.Expression(t -> (float) Math.pow(t, 0.6) * ringScale * 1.3f), false),
                     new ParticleComponent.PropertyControl(ParticleComponent.PropertyControl.EnumParticleProperty.ALPHA, new ParticleComponent.Expression(t -> 1f - (float) Math.pow(t, 0.5)), false),
+                    new ParticleComponent.UseDepthWritingLayer(),
             });
             AdvancedParticleBase.spawnParticle(level, ParticleHandler.RING_BIG, player.getX(), player.getY() + player.getBbHeight()/2f, player.getZ(), 0, 0, 0, false, 0, Math.PI/2f, 0, 0, 5F, 0.85,0.65,0.99, 1, 1, 15, true, false, new ParticleComponent[]{
                     new ParticleComponent.PropertyControl(ParticleComponent.PropertyControl.EnumParticleProperty.SCALE, new ParticleComponent.Expression(t -> (float) Math.pow(t, 0.6) * ringScale), false),
                     new ParticleComponent.PropertyControl(ParticleComponent.PropertyControl.EnumParticleProperty.ALPHA, new ParticleComponent.Expression(t -> 1f - (float) Math.pow(t, 0.5)), false),
+                    new ParticleComponent.UseDepthWritingLayer(),
             });
             float glowScale = 130f;
             AdvancedParticleBase.spawnParticle(level, ParticleHandler.GLOW, player.getX(), player.getY() + player.getBbHeight()/2f, player.getZ(), 0, 0, 0, true, 0, 0, 0, 0, 5F, 0.65,0.45,0.95, 1, 1, 20, true, false, new ParticleComponent[]{
                     new ParticleComponent.PropertyControl(ParticleComponent.PropertyControl.EnumParticleProperty.SCALE, new ParticleComponent.Expression(t -> (float) Math.pow(t, 0.6) * glowScale), false),
                     new ParticleComponent.PropertyControl(ParticleComponent.PropertyControl.EnumParticleProperty.ALPHA, new ParticleComponent.Expression(t -> 1f - (float) Math.pow(t, 0.5)), false),
+                    new ParticleComponent.UseDepthWritingLayer(),
             });
             Vec3 moonPos;
             float moonSize;
