@@ -207,6 +207,7 @@ public class AdvancedParticleBase extends SingleQuadParticle {
         for (ParticleComponent component : components) {
             component.preRender(this, partialTicks);
         }
+
         if (alpha < 0.01) alpha = 0.0f;
 
         if (!doRender) return;
@@ -253,6 +254,12 @@ public class AdvancedParticleBase extends SingleQuadParticle {
         float f1 = (float)(Mth.lerp(partialTicks, this.yo, this.y) - cameraPos.y());
         float f2 = (float)(Mth.lerp(partialTicks, this.zo, this.z) - cameraPos.z());
 
+        // AdvancedParticleBase declares its own `alpha` field (see field declaration above), which shadows
+        // SingleQuadParticle's protected `alpha` field of the same name. Since field access isn't virtual in
+        // Java, extractRotatedQuad() (inherited, unmodified from SingleQuadParticle) reads ITS OWN shadowed
+        // field when building the vertex color - so our computed alpha must be explicitly pushed into it via
+        // the inherited setter, or every particle renders at the vanilla default of 1.0F regardless of age.
+        this.setAlpha(alpha);
         this.extractRotatedQuad(particleTypeRenderState, quaternion, f, f1, f2, partialTicks);
 
         // No VertexConsumer is available in the new extract()-based pipeline (see class-level note), so
