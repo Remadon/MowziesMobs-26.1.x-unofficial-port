@@ -17,6 +17,7 @@ All notable changes to this fork's NeoForge 26.1.2 / GeckoLib 5 port are documen
 - Equipping the Wrought Helm rendered a flat gray torso and legs on the player in addition to the helmet, because its custom armor model was built from the full humanoid mesh instead of the head-only mesh NeoForge's equipment renderer expects for a helmet slot.
 - The Wrought Helm (and any other custom-modeled armor) lost its custom geometry and reverted to a plain vanilla armor shape for the duration of an axe swing/slam, because the separate armor renderer used during ability animations never consulted the item's custom armor model.
 - In first person, the player's arm and held item vanished completely for the whole duration of an axe swing or slam, because the first-person hand renderer submitted their geometry from inside a bone-position-listener callback that fires during the draw phase, where newly submitted geometry is silently dropped instead of drawn.
+- In third person, using the Ice Crystal progressively contorted the player's head and upper body into an extreme, unnatural bend over the course of the ability, because the ice breath animation clips don't keyframe the Head/Waist/Clavicle bones and the camera-tracking head-look layer compounded onto them every frame with nothing to reset it.
 
 ### Removed
 - The old runtime item-model-swapping system (`MMModels`) used for hand-held item models and mask/visage "frame" overlays, which had no equivalent API in NeoForge 26.1.2. Replaced with plain data-driven item model JSON.
