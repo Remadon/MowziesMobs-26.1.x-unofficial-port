@@ -16,6 +16,7 @@ import com.geckolib.renderer.GeoObjectRenderer;
 import com.geckolib.renderer.base.BoneSnapshots;
 import com.geckolib.renderer.base.GeoRenderState;
 import com.geckolib.renderer.base.RenderPassInfo;
+import com.geckolib.util.RenderUtil;
 import com.mojang.blaze3d.vertex.PoseStack;
 import com.mojang.math.Axis;
 import net.minecraft.client.Minecraft;
@@ -196,7 +197,21 @@ public class GeckoFirstPersonRenderer extends GeoObjectRenderer<GeckoPlayer, Voi
         String controllerSide = boneSide == HumanoidArm.RIGHT ? "Right" : "Left";
         int sideMult = boneSide == HumanoidArm.RIGHT ? -1 : 1;
 
-        renderPassInfo.addBonePositionListener(boneName, (worldPos, modelPos, localPos) -> {
+        // PORTING NOTE (bug found live, axe swing/slam made the first-person arm+item vanish entirely): this used
+        // to call itemInHandRenderer.renderArmWithItem/renderPlayerArm (which submits geometry via SubmitNodeCollector)
+        // from inside a RenderPassInfo#addBonePositionListener callback. GeckoPlayerArmorLayer's class javadoc
+        // documents (from decompiling GeckoLib's pipeline) that these listeners fire during the DRAW phase - inside
+        // CustomFeatureRenderer.renderSolid's iteration over its already-submitted geometry map - so submitting NEW
+        // geometry from in there is an add-during-iteration hazard: it's silently dropped (or, per that class's own
+        // "CRASH HISTORY" note, intermittently throws a ConcurrentModificationException) depending on the frame's
+        // hash-bucket iteration order, i.e. what else is rendering that frame. Confirmed live: with debug logging,
+        // every axe swing/slam frame logged a successful, exception-free call into renderArmWithItem with the
+        // correct item stack - the call just never produced visible pixels, exactly this failure mode. Fixed the
+        // same way GeckoPlayerArmorLayer already fixed the identical problem for armor: resolve the bone once via
+        // model().getBone(...) and drive the pose manually with RenderUtil.transformToBone inside renderPosed(...),
+        // called synchronously from preRenderPass - i.e. during the submit phase, before the draw phase (and its
+        // live map iteration) even begins.
+        renderPassInfo.model().getBone(boneName).ifPresent(bone -> renderPassInfo.renderPosed(() -> {
             if (pendingPlayer == null) return;
 
             HumanoidArm logicalSide = pendingMirror ? boneSide.getOpposite() : boneSide;
@@ -206,7 +221,11 @@ public class GeckoFirstPersonRenderer extends GeoObjectRenderer<GeckoPlayer, Voi
             if (display == PlayerAbility.HandDisplay.DONT_RENDER) return;
 
             ItemStack stack = isMainHand ? pendingMainStack : pendingOffStack;
-            PoseStack.Pose bonePose = renderPassInfo.poseStack().last();
+            PoseStack poseStack = renderPassInfo.poseStack();
+            poseStack.pushPose();
+            RenderUtil.transformToBone(poseStack, bone);
+
+            PoseStack.Pose bonePose = poseStack.last();
             PoseStack newMatrixStack = new PoseStack();
             float fixedPitchController = 1.0F - geoModel.getControllerValueInverted("FixedPitchController" + controllerSide);
 
@@ -222,7 +241,9 @@ public class GeckoFirstPersonRenderer extends GeoObjectRenderer<GeckoPlayer, Voi
                 InteractionHand hand = isMainHand ? InteractionHand.MAIN_HAND : InteractionHand.OFF_HAND;
                 itemInHandRenderer.renderArmWithItem(pendingPlayer, pendingPartialTick, pendingPitch, hand, 0.0F, stack, 0.0F, newMatrixStack, renderTasks, pendingPackedLight);
             }
-        });
+
+            poseStack.popPose();
+        }));
     }
 
     /**
