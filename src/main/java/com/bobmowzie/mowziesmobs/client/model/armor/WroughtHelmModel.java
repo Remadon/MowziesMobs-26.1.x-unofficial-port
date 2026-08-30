@@ -20,7 +20,13 @@ public class WroughtHelmModel<T extends HumanoidRenderState> extends HumanoidMod
 
 	public static LayerDefinition createArmorLayer() {
 		CubeDeformation deformation = CubeDeformation.NONE;
-		MeshDefinition meshdefinition = HumanoidModel.createMesh(deformation, 0.0F);
+		// PORTING NOTE: must use the head-only mesh (like vanilla's per-slot ArmorModelSet), not the full humanoid
+		// mesh. NeoForge's getGenericArmorModel() only copies part *properties* (visibility, position, etc.) from
+		// the vanilla head-slot model onto this replacement - it doesn't touch geometry. Vanilla's head-slot model
+		// has its body/arm/leg cubes zeroed out via retainPartsAndChildren(), so using the full mesh here left real
+		// body/arm/leg boxes behind that rendered using wrought_helmet.png's UV data at those coordinates, showing
+		// up as a flat gray torso/legs whenever the helmet was equipped.
+		MeshDefinition meshdefinition = HumanoidModel.createArmorMeshSet(deformation, deformation).head();
 		PartDefinition partdefinition = meshdefinition.getRoot();
 		PartDefinition head = partdefinition.getChild("head");
 
