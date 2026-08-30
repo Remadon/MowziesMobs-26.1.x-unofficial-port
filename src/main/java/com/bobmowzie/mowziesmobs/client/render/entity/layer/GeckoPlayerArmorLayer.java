@@ -4,6 +4,8 @@ import com.geckolib.renderer.base.GeoRenderState;
 import com.geckolib.renderer.base.RenderPassInfo;
 import com.geckolib.util.RenderUtil;
 import com.mojang.blaze3d.vertex.PoseStack;
+import net.minecraft.client.model.HumanoidModel;
+import net.minecraft.client.model.Model;
 import net.minecraft.client.model.player.PlayerModel;
 import net.minecraft.client.model.geom.EntityModelSet;
 import net.minecraft.client.model.geom.ModelLayers;
@@ -119,7 +121,7 @@ public class GeckoPlayerArmorLayer {
         renderBone(renderPassInfo, renderTasks, player, "LeftLeg", models, EquipmentSlot.FEET, m -> m.leftLeg, 0f);
     }
 
-    private void renderBone(RenderPassInfo<GeoRenderState> renderPassInfo, SubmitNodeCollector renderTasks, AbstractClientPlayer player, String boneName, ArmorModelSet<PlayerModel> models, EquipmentSlot slot, Function<PlayerModel, ModelPart> partGetter, float pivotLiftSixteenths) {
+    private void renderBone(RenderPassInfo<GeoRenderState> renderPassInfo, SubmitNodeCollector renderTasks, AbstractClientPlayer player, String boneName, ArmorModelSet<PlayerModel> models, EquipmentSlot slot, Function<HumanoidModel<?>, ModelPart> partGetter, float pivotLiftSixteenths) {
         ItemStack stack = player.getItemBySlot(slot);
         Equippable equippable = stack.get(DataComponents.EQUIPPABLE);
         if (equippable == null || equippable.slot() != slot || equippable.assetId().isEmpty()) return;
@@ -128,8 +130,18 @@ public class GeckoPlayerArmorLayer {
         List<EquipmentClientInfo.Layer> layers = equipmentAssets.get(equippable.assetId().get()).getLayers(layerType);
         if (layers.isEmpty()) return;
 
+        IClientItemExtensions extensions = IClientItemExtensions.of(stack);
+
         renderPassInfo.model().getBone(boneName).ifPresent(bone -> renderPassInfo.renderPosed(() -> {
-            ModelPart part = partGetter.apply(models.get(slot));
+            // Items with a custom armor model (e.g. WroughtHelmModel's horns/tusks) must be resolved through
+            // getGenericArmorModel the same way vanilla's HumanoidArmorLayer does - this layer only exists to
+            // render armor DURING an active ability (see class javadoc), and previously always used the plain
+            // vanilla PlayerModel part regardless of the equipped item, silently reverting custom-modeled armor
+            // (like the Wrought Helm) to its generic vanilla shape for the ability's whole duration.
+            PlayerModel vanillaModel = models.get(slot);
+            Model resolvedModel = extensions.getGenericArmorModel(stack, layerType, vanillaModel);
+            HumanoidModel<?> armorModel = resolvedModel instanceof HumanoidModel<?> customModel ? customModel : vanillaModel;
+            ModelPart part = partGetter.apply(armorModel);
             part.xRot = 0;
             part.yRot = 0;
             part.zRot = 0;
@@ -157,7 +169,6 @@ public class GeckoPlayerArmorLayer {
             bone.translateAwayFromPivotPoint(poseStack);
             poseStack.scale(-1.0F, -1.0F, 1.0F);
 
-            IClientItemExtensions extensions = IClientItemExtensions.of(stack);
             int dyeColor = extensions.getDefaultDyeColor(stack);
             boolean renderFoil = stack.hasFoil();
             int lightCoords = renderPassInfo.packedLight();
