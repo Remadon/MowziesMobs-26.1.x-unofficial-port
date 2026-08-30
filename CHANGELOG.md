@@ -15,6 +15,7 @@ All notable changes to this fork's NeoForge 26.1.2 / GeckoLib 5 port are documen
 - The Elokosa Paw ability's glow/burst/ring particles never faded out — they stayed at full opacity for their entire lifetime instead of fading over time, making the effect look like a solid opaque blob rather than a translucent glow.
 - The Elokosa Paw ability's outward-extending runic ring was invisible from most camera angles (including the top-down view needed to see it clearly), due to backface culling on its non-billboarded flat quad.
 - Equipping the Wrought Helm rendered a flat gray torso and legs on the player in addition to the helmet, because its custom armor model was built from the full humanoid mesh instead of the head-only mesh NeoForge's equipment renderer expects for a helmet slot.
+- The Wrought Helm (and any other custom-modeled armor) lost its custom geometry and reverted to a plain vanilla armor shape for the duration of an axe swing/slam, because the separate armor renderer used during ability animations never consulted the item's custom armor model.
 
 ### Removed
 - The old runtime item-model-swapping system (`MMModels`) used for hand-held item models and mask/visage "frame" overlays, which had no equivalent API in NeoForge 26.1.2. Replaced with plain data-driven item model JSON.
