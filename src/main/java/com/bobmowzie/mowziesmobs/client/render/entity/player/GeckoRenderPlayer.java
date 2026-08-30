@@ -5,6 +5,8 @@ import com.bobmowzie.mowziesmobs.client.render.entity.layer.GeckoPlayerArmorLaye
 import com.bobmowzie.mowziesmobs.client.render.entity.layer.GeckoPlayerItemInHandLayer;
 import com.bobmowzie.mowziesmobs.client.render.entity.layer.SolarFlareLayer;
 import com.bobmowzie.mowziesmobs.server.ability.Ability;
+import com.bobmowzie.mowziesmobs.server.ability.AbilitySection;
+import com.bobmowzie.mowziesmobs.server.ability.abilities.player.IceBreathAbility;
 import com.bobmowzie.mowziesmobs.server.ability.abilities.player.WroughtAxeSlamAbility;
 import com.bobmowzie.mowziesmobs.server.ability.abilities.player.WroughtAxeSwingAbility;
 import com.bobmowzie.mowziesmobs.server.ability.abilities.player.heliomancy.SolarBeamAbility;
@@ -286,8 +288,9 @@ public class GeckoRenderPlayer extends GeoObjectRenderer<GeckoPlayer, Void, GeoR
         boolean isSolarBeam = activeAbility instanceof SolarBeamAbility;
         boolean isSolarFlare = activeAbility instanceof SolarFlareAbility;
         boolean isSupernova = activeAbility instanceof SupernovaAbility;
+        boolean isIceBreath = activeAbility instanceof IceBreathAbility;
 
-        if (isAxeSwingOrSlam || isSunstrike || isSolarFlare) {
+        if (isAxeSwingOrSlam || isSunstrike || isSolarFlare || isIceBreath) {
             geoModel.resetBoneToSnapshot(geoModel.getMowzieBone("Head"));
         }
         if (isAxeSwingOrSlam || isSolarFlare || isSupernova) {
@@ -299,7 +302,7 @@ public class GeckoRenderPlayer extends GeoObjectRenderer<GeckoPlayer, Void, GeoR
         if (isAxeSwingOrSlam || isSunstrike || isSolarBeam || isSolarFlare || isSupernova) {
             geoModel.resetBoneToSnapshot(geoModel.getMowzieBone("ArmBreathController"));
         }
-        if (isAxeSwingOrSlam || isSunstrike || isSolarBeam || isSolarFlare) {
+        if (isAxeSwingOrSlam || isSunstrike || isSolarBeam || isSolarFlare || isIceBreath) {
             geoModel.getMowzieBone("Body").setPos(0, 0, 0);
         }
         if (isSupernova) {
@@ -312,7 +315,10 @@ public class GeckoRenderPlayer extends GeoObjectRenderer<GeckoPlayer, Void, GeoR
             geoModel.getMowzieBone("LeftArm").setPos(0, 0, 0);
             geoModel.getMowzieBone("RightArm").setPos(0, 0, 0);
         }
-        if (activeAbility instanceof WroughtAxeSlamAbility || isSunstrike || isSolarFlare || isSupernova) {
+        if (activeAbility instanceof WroughtAxeSlamAbility || isSunstrike || isSolarFlare || isSupernova || isIceBreath) {
+            // ice_breath_start/loop/end have no "Waist" track at all either - Ice Crystal doesn't require sneaking
+            // to use, but nothing prevents using it while sneaking, so this is applied defensively like the axe
+            // slam/Sunstrike/Solar Flare/Supernova cases above rather than waiting for that specific repro.
             geoModel.getMowzieBone("Waist").setPos(0, 0, 0);
         }
         // FOLLOW-UP FIX (Sunstrike/Solar Beam/Solar Flare: reported arm "flailing"/"waving wildly" persisted even
@@ -326,7 +332,19 @@ public class GeckoRenderPlayer extends GeoObjectRenderer<GeckoPlayer, Void, GeoR
         // rotation swings the entire arm (clavicle + arm together) around unpredictably as the camera moves,
         // which is exactly what "flailing"/"waving around" describes. axe and supernova's clips both keyframe
         // both clavicles directly and are unaffected.
-        if (isSunstrike || isSolarBeam || isSolarFlare) {
+        // FOLLOW-UP FIX (Ice Crystal: reported "animation issues" in third person, screenshot/capture-confirmed as
+        // the head and upper body progressively contorting into an extreme, unnatural bend over the course of the
+        // ability): checked ice_breath_start/loop/end against animated_player.animation.json directly - none of the
+        // three have a "Head" track (handled above) or a "Waist" track (handled above), and critically,
+        // ice_breath_start/loop ALSO have no "LeftClavicle"/"RightClavicle" track (only ice_breath_end keyframes
+        // those two directly) - so the same head-look/arm-look additive layer that caused Sunstrike/Solar Beam/Solar
+        // Flare's arm-flailing compounds on the clavicles for the whole startup+loop duration here too, dragging the
+        // arms (and by extension the whole upper body) into an increasingly extreme pose as the camera moves.
+        // Gated to STARTUP/ACTIVE only (not RECOVERY) since ice_breath_end's own keyframed clavicle pose must
+        // survive - resetting it there would discard that clip's intended pose, same caution already applied to
+        // axe's RightArm/LeftArm/Waist above.
+        boolean isIceBreathStartOrLoop = isIceBreath && activeAbility.getCurrentSection().sectionType != AbilitySection.AbilitySectionType.RECOVERY;
+        if (isSunstrike || isSolarBeam || isSolarFlare || isIceBreathStartOrLoop) {
             geoModel.resetBoneToSnapshot(geoModel.getMowzieBone("LeftClavicle"));
             geoModel.resetBoneToSnapshot(geoModel.getMowzieBone("RightClavicle"));
         }
