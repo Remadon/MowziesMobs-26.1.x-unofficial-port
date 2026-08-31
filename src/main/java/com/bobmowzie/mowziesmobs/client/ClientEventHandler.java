@@ -272,6 +272,21 @@ public class ClientEventHandler {
         }
     }
 
+    // PORTING NOTE: vanilla's BossHealthOverlay#extractRenderState is supposed to thread an accumulating yOffset
+    // between successive CustomizeGuiOverlayEvent.BossEventProgress firings within one frame (each bar's
+    // event.setIncrement(...) is meant to push the next bar's own event.getY() further down) - confirmed via debug
+    // logging that this isn't happening in this build: every Mowzie's Mobs boss bar reported the SAME event.getY()
+    // (always the initial 12) in the same frame despite event.getIncrement() correctly reading back our own 25
+    // immediately after we set it, so all of them drew on top of each other. Rather than depend on that vanilla
+    // accumulator, this tracks its own running Y offset across bars, reset to the same base vanilla starts at (12)
+    // once per frame via RenderGuiEvent.Pre (fired before the HUD, and therefore before boss bars, on every frame).
+    private static int mmBossBarYOffset = 12;
+
+    @SubscribeEvent(priority = EventPriority.HIGHEST)
+    public static void onPreRenderGui(RenderGuiEvent.Pre event) {
+        mmBossBarYOffset = 12;
+    }
+
     @SubscribeEvent(priority = EventPriority.HIGHEST)
     public static void onRenderBossBar(CustomizeGuiOverlayEvent.BossEventProgress event){
         if (!ConfigHandler.CLIENT.customBossBars.get()) return;
@@ -281,7 +296,8 @@ public class ClientEventHandler {
         if (customBossBar == null) return;
 
         event.setCanceled(true);
-        customBossBar.renderBossBar(event);
+        customBossBar.renderBossBar(event, mmBossBarYOffset);
+        mmBossBarYOffset += customBossBar.getVerticalIncrement();
     }
 
     private static Identifier SCULPTOR_BLOCK_GLOW = Identifier.fromNamespaceAndPath(MMCommon.MODID, "textures/entity/sculptor_highlight.png");
