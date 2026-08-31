@@ -124,11 +124,10 @@ public class CustomBossBar {
         return textColor;
     }
 
-    public void renderBossBar(CustomizeGuiOverlayEvent.BossEventProgress event) {
+    public void renderBossBar(CustomizeGuiOverlayEvent.BossEventProgress event, int y) {
         int baseYOffset = getBaseOffsetY();
 
         GuiGraphicsExtractor guiGraphics = event.getGuiGraphics();
-        int y = event.getY();
         int i = Minecraft.getInstance().getWindow().getGuiScaledWidth();
         int j = y - 9;
         int k = i / 2 - 91;
@@ -141,15 +140,17 @@ public class CustomBossBar {
         int l = Minecraft.getInstance().font.width(component);
         int i1 = i / 2 - l / 2;
         int j1 = j;
-        guiGraphics.text(Minecraft.getInstance().font, component, i1, j1, 16777215);
+        // PORTING NOTE: was 16777215 (0x00FFFFFF) - opaque white with the alpha byte left at 0. NeoForge 26.1.2's
+        // GuiGraphicsExtractor#text guards on ARGB.alpha(color) != 0 and silently skips queuing the draw entirely
+        // when it's 0, so this text never actually rendered. -1 (0xFFFFFFFF) is the correct fully-opaque white,
+        // matching what vanilla's own BossHealthOverlay uses for the exact same boss-name text.
+        guiGraphics.text(Minecraft.getInstance().font, component, i1, j1, -1);
 
         if (hasOverlay()) {
             net.minecraft.util.profiling.Profiler.get().push("customBossBarOverlay");
             event.getGuiGraphics().blit(RenderPipelines.GUI_TEXTURED, getOverlayTexture(), event.getX() + 1 + getOverlayOffsetX(), y + getOverlayOffsetY() + baseYOffset, 0.0F, 0.0F, getOverlayWidth(), getOverlayHeight(), getOverlayWidth(), getOverlayHeight());
             net.minecraft.util.profiling.Profiler.get().pop();
         }
-
-        event.setIncrement(getVerticalIncrement());
     }
 
     private void drawBar(GuiGraphicsExtractor guiGraphics, int x, int y, BossEvent event) {
